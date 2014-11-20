@@ -1,0 +1,77 @@
+/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/ {
+        i2c@13{
+                compatible = "i2c-gpio";
+                gpios = <&gpg2 0 0 /* sda */
+                         &gpg2 1 0 /* scl */
+                        >;
+                i2c-gpio,delay-us = <2>;
+                #address-cells = <1>;
+                #size-cells = <0>;
+                status = "okay";
+
+		max77804@66 {
+			compatible = "maxim,max77804";
+			reg = <0x66>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&mfd_irq &vibetonz_pwm &fimc_is_flash>;
+			max77804,irq-gpio = <&gpa1 5 1>;
+			max77804,irqf-trigger = "low_level";
+			max77804,wakeup;
+
+			regulators {
+				safeout1: ESAFEOUT1 {
+					regulator-compatible = "safeout1";
+					regulator-name = "safeout1_range";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <4900000>;
+					regulator-boot-on;
+				};
+
+				safeout2: ESAFEOUT2 {
+					regulator-compatible = "safeout2";
+					regulator-name = "safeout2_range";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <4900000>;
+				};
+			};
+		};
+	};
+
+	/* for flashlight widget */
+	torch {
+		status = "okay";
+		leds1 {
+			ledname = "leds-sec1";
+		/* MAX77804_FLASH_LED_1 */
+			id = <0>;
+		/* MAX77804_FLASH_TIME_187P5MS */
+			timer = <2>;
+		/* MAX77804_TIMER_MODE_MAX_TIMER */
+			timer_mode = <1>;
+		/* MAX77804_LED_CTRL_BY_FLASHSTB */
+			cntrl_mode = <0>;
+			brightness = <0x3D>;
+		};
+		leds2 {
+			ledname = "torch-sec1";
+		/* MAX77804_TORCH_LED_1 */
+			id = <1>;
+		/* MAX77804_LED_CTRL_BY_FLASHSTB */
+			cntrl_mode = <0>;
+			brightness = <0x06>;
+		};
+	};
+};
+
