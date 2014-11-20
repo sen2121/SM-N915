@@ -1,4 +1,4 @@
-SM-N915
-=======
+SM-N915-Kernel
+==============
 
-Will be new kernel repo, screwed up my git :(
+Samsung Galaxy Note Edge Exynos 5433 Kernel
