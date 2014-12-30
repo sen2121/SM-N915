@@ -45,7 +45,7 @@
 		PIN_SLP(gpf4-7, INPUT, DOWN);	/* MAIN_CAM_A_EN */
 
 		PIN_SLP(gpf5-0, PREV, NONE);	/* IPC_SLAVE_WAKEUP */
-		PIN_SLP(gpf5-1, INPUT, DOWN);	/* PEN_FWE_1.8V */
+		PIN_SLP(gpf5-1, OUT0, NONE);	/* PEN_FWE_1.8V */
 		PIN_SLP(gpf5-2, PREV, NONE);	/* FPS_RST_N */
 		PIN_SLP(gpf5-3, INPUT, DOWN);	/* NC */
 		PIN_SLP(gpf5-4, OUT1, NONE);	/* WRSTB_IN */

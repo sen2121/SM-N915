@@ -438,8 +438,13 @@ struct mem_link_device {
 	struct delayed_work cp_sleep_dwork;	/* to hold ap2cp_wakeup */
 
 	spinlock_t pm_lock;
+
+	unsigned long long last_cp2ap_intr;
 #endif
 	atomic_t ref_cnt;
+
+	unsigned int gpio_ipc_int2cp;		/* AP-to-CP send signal GPIO */
+	spinlock_t sig_lock;
 
 	void (*start_pm)(struct mem_link_device *mld);
 	void (*stop_pm)(struct mem_link_device *mld);
@@ -449,7 +454,9 @@ struct mem_link_device {
 #endif
 
 #ifdef DEBUG_MODEM_IF
+	struct dentry *dbgfs_dir;
 	struct debugfs_blob_wrapper mem_dump_blob;
+	struct dentry *dbgfs_frame;
 #endif
 };
 

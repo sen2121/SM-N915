@@ -82,6 +82,7 @@ static void active_sleep_enable(void *device_data);
 static void quick_shot_enable(void *device_data);
 static void second_screen_enable(void *device_data);
 static void set_longpress_enable(void *device_data);
+static void set_grip_detection(void *device_data);
 static void set_sidescreen_x_length(void *device_data);
 static void set_dead_zone(void *device_data);
 static void scrub_enable(void *device_data);
@@ -89,8 +90,9 @@ static void quick_app_access_enable(void *device_data);
 static void direct_indicator_enable(void *device_data);
 static void delay(void *device_data);
 static void debug(void *device_data);
+#ifdef FTS_SUPPORT_MAINSCREEN_DISBLE
 static void set_mainscreen_disable(void *device_data);
-
+#endif
 static void not_support_cmd(void *device_data);
 
 static ssize_t store_cmd(struct device *dev, struct device_attribute *devattr,
@@ -165,6 +167,7 @@ struct ft_cmd ft_commands[] = {
 	{FT_CMD("quick_shot_enable", quick_shot_enable),},
 	{FT_CMD("second_screen_enable", second_screen_enable),},
 	{FT_CMD("set_longpress_enable", set_longpress_enable),},
+	{FT_CMD("set_grip_detection", set_grip_detection),},
 	{FT_CMD("set_sidescreen_x_length", set_sidescreen_x_length),},
 	{FT_CMD("set_dead_zone", set_dead_zone),},
 	{FT_CMD("scrub_enable", scrub_enable),},
@@ -172,7 +175,9 @@ struct ft_cmd ft_commands[] = {
 	{FT_CMD("direct_indicator_enable", direct_indicator_enable),},
 	{FT_CMD("delay", delay),},
 	{FT_CMD("debug", debug),},
+#ifdef FTS_SUPPORT_MAINSCREEN_DISBLE
 	{FT_CMD("set_mainscreen_disable", set_mainscreen_disable),},
+#endif
 	{FT_CMD("not_support_cmd", not_support_cmd),},
 };
 
@@ -268,7 +273,7 @@ static ssize_t fts_edge_x_position(struct device *dev,
 		return -EINVAL;
 	}
 
-	edge_start_position = info->board->max_x + 1;
+	edge_start_position = info->board->edge_x_pos;
 
 	tsp_debug_info(true, &info->client->dev, "%s: %d\n", __func__, edge_start_position);
 	snprintf(buff, sizeof(buff), "%d", edge_start_position);
@@ -579,10 +584,15 @@ static void fw_update(void *device_data)
 static int fts_get_channel_info(struct fts_ts_info *info)
 {
 	int rc;
-	unsigned char cmd[4] =
-		{ 0xB2, 0x00, 0x14, 0x02 };
+	unsigned char cmd[4] = { 0xB2, 0x00, 0x14, 0x02 };
+	unsigned char int_disable_cmd[4] = { 0xB6, 0x00, 0x1C, 0x00 };
+	unsigned char int_enable_cmd[4] =  { 0xB6, 0x00, 0x1C, 0x41 };
 	unsigned char data[FTS_EVENT_SIZE];
 	int retry = 0;
+
+	/* Rx/Tx channel information routine is using shared buffer with touch event block.
+	 * So, when get Rx/Tx channel information, disable/enable interrupt(event block) */
+	fts_write_reg(info, &int_disable_cmd[0], 4);/* Disable interrupt*/
 
 	memset(data, 0x0, FTS_EVENT_SIZE);
 
@@ -610,6 +620,11 @@ static int fts_get_channel_info(struct fts_ts_info *info)
 		}
 		mdelay(5);
 	}
+
+	fts_write_reg(info, &int_enable_cmd[0], 4);/* Enable interrupt*/
+
+	dev_info(&info->client->dev, "%s: SenseChannel: %02d, Force Channel: %02d\n",
+			__func__, info->SenseChannelLength, info->ForceChannelLength);
 
 	return rc;
 }
@@ -2330,13 +2345,29 @@ static void second_screen_enable(void *device_data)
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
+void longpress_grip_enable_mode (struct fts_ts_info *info, bool on)
+{
+	int ret;
+	unsigned char regAdd[4] = {0xB0, 0x07, 0x10, 0x03};
+
+	if (on){
+		regAdd[3] = 0x03;	// default
+	}else{
+		regAdd[3] = 0x02;	// can long press
+	}
+
+	ret = fts_write_reg(info, regAdd, 4);
+	if (ret < 0)
+		dev_err(&info->client->dev, "%s failed. ret: %d\n", __func__, ret);
+	else
+		dev_info(&info->client->dev, "%s: reg:%d, ret: %d\n", __func__, on, ret);
+	fts_delay(1);
+}
+
 static void set_longpress_enable(void *device_data)
 {
 	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
 	char buff[CMD_STR_LEN] = { 0 };
-	unsigned char regAdd[4] = {0xB0, 0x07, 0x10, 0x03};
-	int ret;
-	int bflag = 0;
 
 	set_default_result(info);
 
@@ -2345,23 +2376,61 @@ static void set_longpress_enable(void *device_data)
 		info->cmd_state = CMD_STATUS_FAIL;
 	} else {
 		if (info->cmd_param[0])
-			bflag = 1;
+			longpress_grip_enable_mode(info, 1);
 		else
-			bflag = 0;
+			longpress_grip_enable_mode(info, 0);
 
-		if (bflag)
-			regAdd[3] = 0x03;
-		else
-			regAdd[3] = 0x02;
+			snprintf(buff, sizeof(buff), "%s", "OK");
+			info->cmd_state = CMD_STATUS_OK;
+	}
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+	mutex_lock(&info->cmd_lock);
+	info->cmd_is_running = false;
+	mutex_unlock(&info->cmd_lock);
+	info->cmd_state = CMD_STATUS_WAITING;
+
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+};
+
+
+void grip_check_enable_mode (struct fts_ts_info *info, bool on)
+{
+	int ret;
+    unsigned char regAdd[4] = {0xB0, 0x07, 0x11, 0x7F};
+	if (on){
+		regAdd[3] = 0x7F;//  default
+		info->edge_grip_mode = true;
+	}else{
+		regAdd[3] = 0x7E;// don't check grip
+		info->edge_grip_mode = false;
+	}
 
 		ret = fts_write_reg(info, regAdd, 4);
 
 		if (ret < 0)
-			tsp_debug_err(true, &info->client->dev, "%s failed. ret: %d\n", __func__, ret);
+		dev_err(&info->client->dev, "%s failed. ret: %d\n", __func__, ret);
 		else
-			tsp_debug_info(true, &info->client->dev, "%s: on/off:%d, ret: %d\n", __func__, bflag, ret);
-
+		dev_info(&info->client->dev, "%s: reg:%d, ret: %d\n", __func__, on, ret);
 		fts_delay(1);
+}
+
+static void set_grip_detection (void *device_data)
+{
+    struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+    char buff[CMD_STR_LEN] = { 0 };
+
+    set_default_result(info);
+    if (info->cmd_param[0] < 0 || info->cmd_param[0] > 1) {
+        snprintf(buff, sizeof(buff), "%s", "NG");
+        info->cmd_state = CMD_STATUS_FAIL;
+    } else {
+        if (info->cmd_param[0]){
+			longpress_grip_enable_mode(info, 1);		// default
+			grip_check_enable_mode(info, 1);			// default
+        }else{
+			longpress_grip_enable_mode(info, 0);
+			grip_check_enable_mode(info, 0);
+        }
 
 		snprintf(buff, sizeof(buff), "%s", "OK");
 		info->cmd_state = CMD_STATUS_OK;
@@ -2454,21 +2523,21 @@ static void set_dead_zone(void *device_data)
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
-static void set_mainscreen_disable_cmd(struct fts_ts_info *info, bool on)
+#ifdef FTS_SUPPORT_MAINSCREEN_DISBLE
+void set_mainscreen_disable_cmd(struct fts_ts_info *info, bool on)
 {
 	int ret;
 	unsigned char regAdd[2] = {0xC2, 0x07};
-	
+
 	if (on){
-		regAdd[0] = 0xC1;				// main screen disable			
+		regAdd[0] = 0xC1;				// main screen disable
 		info->mainscr_disable = true;
-	}else{ 
-		regAdd[0] = 0xC2;				// enable like normal			
+	}else{
+		regAdd[0] = 0xC2;				// enable like normal
 		info->mainscr_disable = false;
 	}
-	
+
 	ret = fts_write_reg(info, regAdd, 2);
-	
 	if (ret < 0)
 		tsp_debug_err(true, &info->client->dev, "%s failed. ret: %d\n", __func__, ret);
 	else
@@ -2504,6 +2573,7 @@ static void set_mainscreen_disable(void *device_data)
 
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
+#endif
 
 static void scrub_enable(void *device_data)
 {

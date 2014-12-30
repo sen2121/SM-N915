@@ -38,6 +38,7 @@
 
 #ifndef CONFIG_SAMSUNG_PRODUCT_SHIP
 #define DEBUG_MODEM_IF
+#include <trace/events/modem_if.h>
 #endif
 
 #ifdef DEBUG_MODEM_IF
@@ -53,21 +54,11 @@
 
 #if 0
 #define DEBUG_MODEM_IF_IODEV_TX
-#endif
-#if 1
 #define DEBUG_MODEM_IF_IODEV_RX
-#endif
-
-#if 1
-#define DEBUG_MODEM_IF_FLOW_CTRL
-#endif
-
-#if 0
 #define DEBUG_MODEM_IF_PS_DATA
-#endif
-#if 0
 #define DEBUG_MODEM_IF_IP_DATA
 #endif
+#define DEBUG_MODEM_IF_FLOW_CTRL
 #endif
 
 /*
@@ -165,6 +156,13 @@ struct modem_firmware {
 	u32 size;
 };
 
+#ifdef CONFIG_COMPAT
+struct modem_firmware_64 {
+	char *binary;
+	unsigned long size;
+};
+#endif
+
 #define SIPC_MULTI_FRAME_MORE_BIT	(0b10000000)	/* 0x80 */
 #define SIPC_MULTI_FRAME_ID_MASK	(0b01111111)	/* 0x7F */
 #define SIPC_MULTI_FRAME_ID_BITS	7
@@ -198,6 +196,18 @@ static inline bool sipc_ps_ch(u8 ch)
 {
 	return (ch >= SIPC_CH_ID_PDP_0 && ch <= SIPC_CH_ID_PDP_14) ?
 		true : false;
+}
+
+static inline bool sipc_major_ch(u8 ch)
+{
+	switch (ch) {
+	case SIPC_CH_ID_PDP_0:
+	case SIPC_CH_ID_PDP_1:
+	case SIPC5_CH_ID_FMT_0:
+	case SIPC5_CH_ID_RFS_0:
+		return true;
+	}
+	return false;
 }
 
 /**
@@ -239,7 +249,6 @@ struct fragmented_data {
 struct skbuff_private {
 	struct io_device *iod;
 	struct link_device *ld;
-	struct io_device *real_iod; /* for rx multipdp */
 
 	/* for time-stamping */
 	struct timespec ts;
@@ -248,10 +257,6 @@ struct skbuff_private {
 	    frm_ctrl:8,	/* Multi-framing control		*/
 	    reserved:15,
 	    lnk_hdr:1;	/* Existence of a link-layer header	*/
-
-	/* USB/HSIC specific */
-	struct urb *urb; /* TX urb*/
-	bool nzlp; /* Non-Zero Length packet*/
 } __packed;
 
 static inline struct skbuff_private *skbpriv(struct sk_buff *skb)

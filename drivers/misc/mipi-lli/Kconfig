@@ -22,4 +22,10 @@ config EXYNOS_MIPI_LLI_MPHY
 	help
 	  Enable M-PHY for MIPI-LLI
 
+config EXYNOS_MIPI_LLI_GPIO_SIDEBAND
+	bool "Enable Exynos MIPI LLI GPIO SIDEBAND SIGNAL"
+	default n
+	help
+	  Prevent bug-hang issue by gpio instead of sideband signal
+
 endif # MIPI_LLI

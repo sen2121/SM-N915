@@ -3,5 +3,5 @@
 export ARCH=arm
 export CROSS_COMPILE=/opt/toolchains/arm-eabi-4.7/bin/arm-eabi-
 
-make tbelteskt_defconfig
+make tbeltektt_defconfig
 make

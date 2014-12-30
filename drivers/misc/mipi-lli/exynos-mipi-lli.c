@@ -36,7 +36,7 @@
  */
 #define SYSTEM_CLOCK_PERIOD		(10)
 #define SIG_INT_MASK0			(0xFFFFFFFF)
-#define SIG_INT_MASK1			(0xFFFFFFFF)
+#define SIG_INT_MASK1			(0x00000000)
 
 static bool pa_err_6 = false;
 
@@ -420,32 +420,32 @@ static int exynos_lli_send_signal(struct mipi_lli *lli, u32 cmd)
 {
 	int is_mounted = 0;
 
-	if (atomic_read(&lli->state) == LLI_MOUNTED) {
-		/* For unmount failed issue, we should check the
-		   LLI_MOUNT_CTRL is cleared or not */
-		is_mounted = readl(lli->regs + EXYNOS_DME_CSA_SYSTEM_STATUS);
-		if ((is_mounted & LLI_MOUNT_CTRL) && !pa_err_6) {
-#if defined(CONFIG_SOC_EXYNOS5430) && defined(CONFIG_UMTS_MODEM_SS300)
-			writel(0, lli->sys_regs + CPIF_LLI_SIG_IN0);
-			udelay(10);
-			writel(cmd, lli->sys_regs + CPIF_LLI_SIG_IN0);
-#elif defined(CONFIG_LTE_MODEM_XMM7260)
-			writel(cmd, lli->remote_regs + EXYNOS_TL_SIGNAL_SET_LSB
-					+ 0x20C);
-#else
-			writel(cmd, lli->remote_regs +
-					EXYNOS_TL_SIGNAL_SET_LSB);
-#endif
-			return 0;
-		} else {
-			return -EIO;
-		}
+	if (atomic_read(&lli->state) != LLI_MOUNTED) {
+		dev_err_ratelimited(lli->dev,
+			"LLI not mounted !! mnt_reg = %d %d\n",
+			is_mounted, pa_err_6);
+		return -EIO;
 	}
 
-	dev_err_ratelimited(lli->dev, "LLI not mounted !! mnt_reg = %d %d\n",
-			is_mounted, pa_err_6);
+	/* For unmount failed issue, we should check the
+	   LLI_MOUNT_CTRL is cleared or not */
+	is_mounted = readl(lli->regs + EXYNOS_DME_CSA_SYSTEM_STATUS);
+	if (!(is_mounted & LLI_MOUNT_CTRL) || pa_err_6)
+		return -EIO;
 
-	return -EIO;
+#ifdef CONFIG_EXYNOS_MIPI_LLI_GPIO_SIDEBAND
+	writel(cmd, lli->regs + EXYNOS_TL_SIGNAL_SET_MSB);
+#elif defined(CONFIG_SOC_EXYNOS5430) && defined(CONFIG_UMTS_MODEM_SS300)
+	writel(0, lli->sys_regs + CPIF_LLI_SIG_IN0);
+	udelay(10);
+	writel(cmd, lli->sys_regs + CPIF_LLI_SIG_IN0);
+#elif defined(CONFIG_LTE_MODEM_XMM7260)
+	writel(cmd, lli->remote_regs + EXYNOS_TL_SIGNAL_SET_LSB + 0x20C);
+#else
+	writel(cmd, lli->remote_regs + EXYNOS_TL_SIGNAL_SET_LSB);
+#endif
+
+	return 0;
 }
 
 static int exynos_lli_reset_signal(struct mipi_lli *lli)
@@ -459,7 +459,9 @@ static int exynos_lli_reset_signal(struct mipi_lli *lli)
 static int exynos_lli_read_signal(struct mipi_lli *lli)
 {
 	u32 intr_lsb, intr_msb;
+#ifndef CONFIG_EXYNOS_MIPI_LLI_GPIO_SIDEBAND
 	static int recv = 0;
+#endif
 
 	intr_lsb = readl(lli->regs + EXYNOS_TL_SIGNAL_STATUS_LSB);
 	intr_msb = readl(lli->regs + EXYNOS_TL_SIGNAL_STATUS_MSB);
@@ -469,11 +471,13 @@ static int exynos_lli_read_signal(struct mipi_lli *lli)
 	if (intr_msb)
 		writel(intr_msb, lli->regs + EXYNOS_TL_SIGNAL_CLR_MSB);
 
+#ifndef CONFIG_EXYNOS_MIPI_LLI_GPIO_SIDEBAND
 	if (pa_err_6 && (++recv > 4)) {
 		pa_err_6 = false;
 		recv = 0;
 		dev_err_ratelimited(lli->dev, "IPC restart by recvd packet\n");
 	}
+#endif
 
 	/* TODO: change to dev_dbg */
 	dev_dbg(lli->dev, "LSB = %x, MSB = %x\n", intr_lsb, intr_msb);
@@ -848,7 +852,7 @@ static irqreturn_t exynos_mipi_lli_irq(int irq, void *_dev)
 		}
 #endif
 
-#ifdef CONFIG_LTE_MODEM_XMM7260
+#ifndef CONFIG_EXYNOS_MIPI_LLI_GPIO_SIDEBAND
 		if (rx & 6) {
 			if (atomic_read(&lli->state) == LLI_MOUNTED) {
 				pa_err_6 = true;

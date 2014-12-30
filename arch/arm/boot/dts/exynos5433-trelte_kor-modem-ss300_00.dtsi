@@ -18,7 +18,7 @@
 		status = "okay";
 
 		pinctrl-names = "default";
-		pinctrl-0 = <&cp_on &cp_reset &pda_active &phone_active &ap2cp_wakeup &ap2cp_status &cp2ap_wakeup &cp2ap_status>;
+		pinctrl-0 = <&cp_on &cp_reset &pda_active &phone_active &ap2cp_wakeup &ap2cp_status &cp2ap_wakeup &cp2ap_status &gpio_ipc_int2cp>;
 
 		mif,gpio_cp_on = <&gpr3 1 0x1>;
 
@@ -27,6 +27,7 @@
 		mif,gpio_phone_active = <&gpa2 3 0xf>;
 
 		mif,gpio_cp_status = <&gpa2 5 0xf>;
+		mif,gpio_ipc_int2cp = <&gpf0 5 0x1>;
 
 		link_pm {
 			gpio_cp2ap_wakeup = <&gpa3 1 0xf>;
@@ -98,6 +99,15 @@
 		};
 	};
 
+
+	pinctrl@11090000 {
+		gpio_ipc_int2cp: gpio_ipc_int2cp {
+			samsung,pins = "gpf0-5";
+			samsung,pin-function = <1>;
+			samsung,pin-val = <0>;
+		};
+	};
+
 	mipi-lli@10F24000 {
 		modem-name = "ss300";
 
@@ -122,6 +132,7 @@
 					init-gear = <2 1 1>;
 					/* use shared reference clock for MPHY */
 					shd-refclk = <1>;
+					e1-patch = <0>;
 				};
 			};
 		};
@@ -166,6 +177,12 @@
 &pinctrl_5 {
 	sleep5: sleep-state {
 		PIN_SLP(gpr3-1, PREV, NONE);	/* CP_ON */
+	};
+};
+
+&pinctrl_6 {
+	sleep6: sleep-state {
+		PIN_SLP(gpf0-5, INPUT, DOWN);	/* AP2CP_GPIO_RSV */
 	};
 };
 

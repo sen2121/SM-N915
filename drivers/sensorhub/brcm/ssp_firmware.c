@@ -14,7 +14,7 @@
  */
 #include "ssp.h"
 
-#define SSP_FIRMWARE_REVISION_BCM	14092900
+#define SSP_FIRMWARE_REVISION_BCM	14112000
 
 unsigned int get_module_rev(struct ssp_data *data)
 {

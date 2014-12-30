@@ -4,8 +4,12 @@
 #define FTS_SUPPORT_NOISE_PARAM
 #define FTS_SUPPORT_TOUCH_KEY
 #define FTS_SUPPORT_SIDE_GESTURE
-#define FTS_SUPPORT_2NDSCREEN
-#define FTS_SUPPORT_SIDE_SCROLL
+#define FTS_SUPPORT_MAINSCREEN_DISBLE
+#undef FTS_SUPPORT_2NDSCREEN
+#undef FTS_SUPPORT_SIDE_SCROLL
+
+#define FTS_ADDED_RESETCODE_IN_LPLM		//all TB, TR chn for lpm mode.
+
 
 extern struct fts_callbacks *fts_charger_callbacks;
 struct fts_callbacks {
@@ -44,6 +48,7 @@ struct fts_i2c_platform_data {
 	bool support_mshover;
 	int max_x;
 	int max_y;
+	int edge_x_pos;
 	int max_width;
 	int SenseChannelLength;
 	int ForceChannelLength;

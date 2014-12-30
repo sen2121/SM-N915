@@ -34,7 +34,7 @@ static void print_mc_state(struct modem_ctl *mc)
 	int cp_active = gpio_get_value(mc->gpio_phone_active);
 	int cp_status = gpio_get_value(mc->gpio_cp_status);
 
-	evt_log(0, "%s: %pf: MC state:%s on:%d reset:%d active:%d status:%d\n",
+	mif_info("%s: %pf: MC state:%s on:%d reset:%d active:%d status:%d\n",
 		mc->name, CALLER, mc_state(mc), cp_on, cp_reset, cp_active,
 		cp_status);
 }
@@ -68,7 +68,7 @@ static irqreturn_t cp_active_handler(int irq, void *arg)
 		} else if (old_state == STATE_ONLINE) {
 			new_state = STATE_CRASH_EXIT;
 		} else {
-			evt_log(0, "%s: %s: don't care!!!\n", mc->name, FUNC);
+			mif_err("%s: %s: don't care!!!\n", mc->name, FUNC);
 		}
 	}
 
@@ -129,7 +129,7 @@ static inline void wait_for_link_unmount(struct modem_ctl *mc,
 	if (ld->unmounted(ld))
 		return;
 
-	evt_log(0, "%s: wait for %s link unmount ...\n", mc->name, ld->name);
+	mif_info("%s: wait for %s link unmount ...\n", mc->name, ld->name);
 
 	mc->unmount_nb.notifier_call = unmount_noti_cb;
 	pm_register_unmount_notifier(&ld->pm, &mc->unmount_nb);
@@ -137,13 +137,13 @@ static inline void wait_for_link_unmount(struct modem_ctl *mc,
 	result = wait_for_completion_interruptible_timeout(&mc->off_cmpl, 5*HZ);
 	if (result <= 0) {
 		if (result < 0)
-			evt_log(0, "%s: %s link unmount ... INTERRUPTED\n",
+			mif_err("%s: %s link unmount ... INTERRUPTED\n",
 				mc->name, ld->name);
 		else
-			evt_log(0, "%s: %s link unmount ... TIMEOUT\n",
+			mif_err("%s: %s link unmount ... TIMEOUT\n",
 				mc->name, ld->name);
 	} else {
-		evt_log(0, "%s: %s link unmount ... DONE\n",
+		mif_info("%s: %s link unmount ... DONE\n",
 			mc->name, ld->name);
 	}
 
@@ -158,7 +158,7 @@ static int ss300_on(struct modem_ctl *mc)
 
 	mif_disable_irq(&mc->irq_cp_active);
 
-	evt_log(0, "%s: %s: +++\n", mc->name, FUNC);
+	mif_info("%s: %s: +++\n", mc->name, FUNC);
 
 	print_mc_state(mc);
 
@@ -193,7 +193,7 @@ static int ss300_on(struct modem_ctl *mc)
 	gpio_set_value(mc->gpio_cp_reset, 1);
 	msleep(300);
 
-	evt_log(0, "%s: %s: ---\n", mc->name, FUNC);
+	mif_info("%s: %s: ---\n", mc->name, FUNC);
 	return 0;
 }
 
@@ -206,7 +206,7 @@ static int ss300_off(struct modem_ctl *mc)
 
 	mif_disable_irq(&mc->irq_cp_active);
 
-	evt_log(0, "%s: %s: +++\n", mc->name, FUNC);
+	mif_info("%s: %s: +++\n", mc->name, FUNC);
 
 	print_mc_state(mc);
 
@@ -214,7 +214,7 @@ static int ss300_off(struct modem_ctl *mc)
 
 	if (cp_offline(mc)) {
 		spin_unlock_irqrestore(&mc->lock, flags);
-		evt_log(0, "%s: %s: OFFLINE already!!!\n", mc->name, FUNC);
+		mif_err("%s: %s: OFFLINE already!!!\n", mc->name, FUNC);
 		goto exit;
 	}
 
@@ -230,7 +230,7 @@ static int ss300_off(struct modem_ctl *mc)
 #endif
 
 	if (gpio_get_value(mc->gpio_cp_on) == 0) {
-		evt_log(0, "%s: cp_on == 0\n", mc->name);
+		mif_err("%s: cp_on == 0\n", mc->name);
 		goto exit;
 	}
 
@@ -247,12 +247,12 @@ static int ss300_off(struct modem_ctl *mc)
 		ld->off(ld);
 
 	if (gpio_get_value(mc->gpio_cp_reset)) {
-		evt_log(0, "%s: %s: cp_reset -> 0\n", mc->name, FUNC);
+		mif_err("%s: %s: cp_reset -> 0\n", mc->name, FUNC);
 		gpio_set_value(mc->gpio_cp_reset, 0);
 	}
 
 exit:
-	evt_log(0, "%s: %s: ---\n", mc->name, FUNC);
+	mif_info("%s: %s: ---\n", mc->name, FUNC);
 	return 0;
 }
 
@@ -298,7 +298,7 @@ static int ss300_dump_reset(struct modem_ctl *mc)
 
 	mif_disable_irq(&mc->irq_cp_active);
 
-	evt_log(0, "%s: %s: +++\n", mc->name, FUNC);
+	mif_info("%s: %s: +++\n", mc->name, FUNC);
 
 	print_mc_state(mc);
 
@@ -327,7 +327,7 @@ static int ss300_dump_reset(struct modem_ctl *mc)
 
 	gpio_set_value(mc->gpio_ap_status, 1);
 
-	evt_log(0, "%s: %s: ---\n", mc->name, FUNC);
+	mif_info("%s: %s: ---\n", mc->name, FUNC);
 	return 0;
 }
 

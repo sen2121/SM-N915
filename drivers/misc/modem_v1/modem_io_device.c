@@ -332,9 +332,7 @@ static int rx_multi_pdp(struct sk_buff *skb)
 #ifdef DEBUG_MODEM_IF_IP_DATA
 	print_ipv4_packet(skb->data, RX);
 #endif
-#if defined(DEBUG_MODEM_IF_IODEV_RX) && defined(DEBUG_MODEM_IF_PS_DATA)
-	log_ipc_pkt(iod->id, IODEV, RX, skb, NULL);
-#endif
+	log_ipc_pkt(PS_RX, iod->id, skb);
 
 	if (in_interrupt())
 		ret = netif_rx(skb);
@@ -1383,8 +1381,8 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 	/* Copy an IPC message from the user space to the skb */
 	buff = skb_put(skb, count);
 	if (copy_from_user(buff, data, count)) {
-		mif_err("%s->%s: ERR! copy_from_user fail (count %d)\n",
-			iod->name, ld->name, count);
+		mif_err("%s->%s: ERR! copy_from_user fail (count %ld)\n",
+			iod->name, ld->name, (long)count);
 		dev_kfree_skb_any(skb);
 		return -EFAULT;
 	}
@@ -1400,9 +1398,7 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 	/* Copy the timestamp to the skb */
 	memcpy(&skbpriv(skb)->ts, &ts, sizeof(struct timespec));
 #endif
-#ifdef DEBUG_MODEM_IF_IODEV_TX
-	log_ipc_pkt(iod->id, IODEV, TX, skb, NULL);
-#endif
+	log_ipc_pkt(IOD_TX, iod->id, skb);
 
 	/* Build SIPC5 link header*/
 	if (cfg) {
@@ -1417,18 +1413,20 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 	/**
 	 * Send the skb with a link device
 	 */
+#ifdef DEBUG_MODEM_IF
 	trace_mif_event(skb, tx_bytes, FUNC);
+#endif
 	ret = ld->send(ld, iod, skb);
 	if (ret < 0) {
-		mif_err("%s->%s: ERR! %s->send fail:%d (tx_bytes:%d len:%d)\n",
-			iod->name, mc->name, ld->name, ret, tx_bytes, count);
+		mif_err("%s->%s: ERR! %s->send fail:%d (tx_bytes:%d len:%ld)\n",
+			iod->name, mc->name, ld->name, ret, tx_bytes, (long)count);
 		dev_kfree_skb_any(skb);
 		return ret;
 	}
 
 	if (ret != tx_bytes) {
-		mif_info("%s->%s: WARN! %s->send ret:%d (tx_bytes:%d len:%d)\n",
-			iod->name, mc->name, ld->name, ret, tx_bytes, count);
+		mif_info("%s->%s: WARN! %s->send ret:%d (tx_bytes:%d len:%ld)\n",
+			iod->name, mc->name, ld->name, ret, tx_bytes, (long)count);
 	}
 
 	return count;
@@ -1461,9 +1459,8 @@ static ssize_t misc_read(struct file *filp, char *buf, size_t count,
 		return -EFAULT;
 	}
 
-#ifdef DEBUG_MODEM_IF_IODEV_RX
-	log_ipc_pkt(iod->id, IODEV, RX, skb, NULL);
-#endif
+	log_ipc_pkt(IOD_RX, iod->id, skb);
+
 	mif_debug("%s: data:%d copied:%d qlen:%d\n",
 		iod->name, skb->len, copied, rxq->qlen);
 
@@ -1477,12 +1474,20 @@ static ssize_t misc_read(struct file *filp, char *buf, size_t count,
 	return copied;
 }
 
+#ifdef CONFIG_COMPAT
+/* all compatible */
+#define compat_misc_ioctl	misc_ioctl
+#else
+#define compat_misc_ioctl	NULL
+#endif
+
 static const struct file_operations misc_io_fops = {
 	.owner = THIS_MODULE,
 	.open = misc_open,
 	.release = misc_release,
 	.poll = misc_poll,
 	.unlocked_ioctl = misc_ioctl,
+	.compat_ioctl = misc_ioctl,
 	.write = misc_write,
 	.read = misc_read,
 };
@@ -1615,9 +1620,7 @@ static int vnet_xmit(struct sk_buff *skb, struct net_device *ndev)
 	/* Copy the timestamp to the skb */
 	memcpy(&skbpriv(skb_new)->ts, &ts, sizeof(struct timespec));
 #endif
-#if defined(DEBUG_MODEM_IF_IODEV_TX) && defined(DEBUG_MODEM_IF_PS_DATA)
-	log_ipc_pkt(iod->id, IODEV, TX, skb_new, NULL);
-#endif
+	log_ipc_pkt(PS_TX, iod->id, skb_new);
 
 	/* Build SIPC5 link header*/
 	buff = skb_push(skb_new, headroom);
