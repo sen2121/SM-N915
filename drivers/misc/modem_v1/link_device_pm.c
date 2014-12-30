@@ -44,7 +44,7 @@ static inline void print_pm_event(struct modem_link_pm *pm, enum pm_event event)
 	PM {cp2ap_wakeup:ap2cp_wakeup:cp2ap_status:ap2cp_status}{event:state}
 	   <CALLER>
 	*/
-	evt_log(0, "%s: PM {%d:%d:%d:%d}{%s:%s} <%pf>\n", pm->link_name,
+	mif_info("%s: PM {%d:%d:%d:%d}{%s:%s} <%pf>\n", pm->link_name,
 		cp2ap_wakeup, ap2cp_wakeup, cp2ap_status, ap2cp_status,
 		pm_event2str(event), pm_state2str(pm->fsm.state), CALLER);
 }
@@ -66,13 +66,13 @@ static inline void print_pm_fsm(struct modem_link_pm *pm)
 	PM {cp2ap_wakeup:ap2cp_wakeup:cp2ap_status:ap2cp_status}\
 	   {event:current_state->next_state} <CALLER>
 	*/
-	evt_log(0, "%s: PM {%d:%d:%d:%d}{%s:%s->%s} <%pf>\n", pm->link_name,
+	mif_info("%s: PM {%d:%d:%d:%d}{%s:%s->%s} <%pf>\n", pm->link_name,
 		cp2ap_wakeup, ap2cp_wakeup, cp2ap_status, ap2cp_status,
 		pm_event2str(pm->fsm.event), pm_state2str(pm->fsm.prev_state),
 		pm_state2str(pm->fsm.state), CALLER);
 
 	if (wdog->msg[0]) {
-		evt_log(0, "%s\n", wdog->msg);
+		mif_err("%s\n", wdog->msg);
 		wdog->msg[0] = 0;
 	}
 }
@@ -172,12 +172,12 @@ static inline void stop_pm_wdog(struct modem_link_pm *pm, enum pm_state state,
 			del_timer(timer);
 
 #ifdef DEBUG_MODEM_IF
-		evt_log(0, "%s: PM WDOG kicked by {%s@%s}\n",
+		mif_err("%s: PM WDOG kicked by {%s@%s}\n",
 			pm->link_name, pm_event2str(event),
 			pm_state2str(state));
 #endif
 	} else {
-		evt_log(0, "%s: ERR! PM WDOG illegal state {%s@%s}\n",
+		mif_err("%s: ERR! PM WDOG illegal state {%s@%s}\n",
 			pm->link_name, pm_event2str(event),
 			pm_state2str(state));
 	}
@@ -357,7 +357,11 @@ static inline void check_pm_fail(struct modem_link_pm *pm,
 		break;
 
 	case PM_STATE_AP_FAIL:
+#ifdef CONFIG_SAMSUNG_PRODUCT_SHIP
+		handle_cp_fail(pm);
+#else
 		panic("%s: PM_STATE_AP_FAIL\n", pm->link_name);
+#endif
 		break;
 
 	default:
@@ -484,11 +488,7 @@ static void run_pm_fsm(struct modem_link_pm *pm, enum pm_event event)
 		} else if (event == PM_EVENT_WDOG_TIMEOUT) {
 			n_state = PM_STATE_WDOG_TIMEOUT;
 		} else if (event == PM_EVENT_CP2AP_WAKEUP_LOW) {
-#ifdef CONFIG_SAMSUNG_PRODUCT_SHIP
-			n_state = PM_STATE_CP_FAIL;
-#else
 			n_state = PM_STATE_AP_FAIL;
-#endif
 		}
 		break;
 
@@ -686,7 +686,7 @@ static void pm_wdog_bark(unsigned long data)
 	spin_unlock_irqrestore(&pm->lock, flags);
 
 	if (wdog->w_state == c_state) {
-		evt_log(0, "%s: PM WDOG lost event {%s@%s}\n", pm->link_name,
+		mif_err("%s: PM WDOG lost event {%s@%s}\n", pm->link_name,
 			pm_event2str(wdog->w_event), pm_state2str(wdog->state));
 		return;
 	}
@@ -786,7 +786,7 @@ static void start_link_pm(struct modem_link_pm *pm, enum pm_event event)
 	spin_lock_irqsave(&pm->lock, flags);
 
 	if (pm->active) {
-		evt_log(0, "%s: PM is already ACTIVE\n", pm->link_name);
+		mif_err("%s: PM is already ACTIVE\n", pm->link_name);
 		goto exit;
 	}
 
@@ -845,11 +845,11 @@ static void stop_link_pm(struct modem_link_pm *pm)
 	pm->active = false;
 
 	mif_disable_irq(&pm->cp2ap_wakeup_irq);
-	evt_log(0, "%s: PM %s_irq#%d handler disabled\n", pm->link_name,
+	mif_err("%s: PM %s_irq#%d handler disabled\n", pm->link_name,
 		pm->cp2ap_wakeup_irq.name, pm->cp2ap_wakeup_irq.num);
 
 	mif_disable_irq(&pm->cp2ap_status_irq);
-	evt_log(0, "%s: PM %s_irq#%d handler disabled\n", pm->link_name,
+	mif_err("%s: PM %s_irq#%d handler disabled\n", pm->link_name,
 		pm->cp2ap_status_irq.name, pm->cp2ap_status_irq.num);
 
 	state = pm->fsm.state;

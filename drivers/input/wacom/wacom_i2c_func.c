@@ -237,6 +237,25 @@ int wacom_i2c_query(struct wacom_i2c *wac_i2c)
 	return ret;
 }
 
+
+int wacom_i2c_modecheck(struct wacom_i2c *wac_i2c)
+{
+	u8 buf = COM_QUERY;
+	int ret;
+	int mode = WACOM_I2C_MODE_NORMAL;
+
+	ret = wacom_i2c_send(wac_i2c, &buf, 1, false);
+	if (ret < 0) {
+		mode = WACOM_I2C_MODE_BOOT;
+	}
+	else{
+		mode = WACOM_I2C_MODE_NORMAL;
+	}
+	printk(KERN_DEBUG "epen:I2C send at usermode(%d)\n", ret);
+	return mode;
+}
+
+
 #ifdef WACOM_IMPORT_FW_ALGO
 #ifdef WACOM_USE_OFFSET_TABLE
 void wacom_i2c_coord_offset(u16 *coordX, u16 *coordY)
@@ -720,10 +739,8 @@ int wacom_i2c_coord(struct wacom_i2c *wac_i2c)
 		y = ((u16) data[3] << 8) + (u16) data[4];
 		pressure = ((u16) data[5] << 8) + (u16) data[6];
 		gain = data[7];
-		/* need to back out */
-		tilt_x = (s8)data[8];
-		tilt_y = (s8)data[9];
-		/* need to back out */
+		tilt_x = (s8)data[9];
+		tilt_y = -(s8)data[8];
 
 		/* origin */
 		x = x - pdata->origin[0];

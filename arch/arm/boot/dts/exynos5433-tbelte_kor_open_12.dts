@@ -14,7 +14,7 @@
 #include "exynos5433-trlte_mhl3x.dtsi"
 #include "exynos5433-tre_gpio_10.dtsi"
 #include "exynos5433-tbe_kor_gpio_09.dtsi"
-#include "exynos5433-trelte_kor-modem-ss300_01.dtsi"
+#include "exynos5433-tbelte_kor-modem-ss300.dtsi"
 #include "exynos5433-trelte_kor-tdmb-00.dtsi"
 #include "exynos5433-trelte_fingerprint-sensor_00.dtsi"
 
@@ -809,6 +809,7 @@
 			stm,irq_type = <8200>;
 			stm,max_coords = <1599 2559>;	/* x y */
 			stm,num_lines = <25 16>;		/* rx tx */
+			stm,edge_x_pos = <1440>;
 			stm,regulator_dvdd = "tsp_io";
 			stm,regulator_avdd = "tsp_avdd";
 			stm,project_name = "TB", "N915";

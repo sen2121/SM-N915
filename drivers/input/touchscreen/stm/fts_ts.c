@@ -72,6 +72,12 @@
 #include <linux/input/mt.h>
 #include "fts_ts.h"
 
+#ifdef FTS_SUPPORT_SIDE_GESTURE
+#include <linux/wakelock.h>
+struct wake_lock  report_wake_lock;
+#endif
+
+
 static struct i2c_driver fts_i2c_driver;
 
 #ifdef FTS_SUPPORT_TOUCH_KEY
@@ -102,6 +108,10 @@ static void fts_input_close(struct input_dev *dev);
 #ifdef USE_OPEN_DWORK
 static void fts_open_work(struct work_struct *work);
 #endif
+#endif
+
+#ifdef FTS_SUPPORT_MAINSCREEN_DISBLE
+extern void set_mainscreen_disable_cmd(struct fts_ts_info *info, bool on);
 #endif
 
 static int fts_stop_device(struct fts_ts_info *info);
@@ -708,6 +718,12 @@ static int fts_init(struct fts_ts_info *info)
 		fts_command(info, FTS_CMD_KEY_SENSE_ON);
 #endif
 
+#ifdef FTS_SUPPORT_SIDE_GESTURE
+	if (info->board->support_sidegesture)
+		fts_enable_feature(info, FTS_FEATURE_SIDE_GUSTURE, true);
+#endif
+
+
 #ifdef FTS_SUPPORT_NOISE_PARAM
 	fts_get_noise_param_address(info);
 #endif
@@ -896,6 +912,8 @@ static unsigned char fts_event_handler_type_b(struct fts_ts_info *info,
 					int direction, distance;
 					direction = data[2 + EventNum * FTS_EVENT_SIZE];
 					distance = *(int *)&data[3 + EventNum * FTS_EVENT_SIZE];
+
+					wake_lock_timeout(&report_wake_lock, 3*HZ);
 
 					input_report_key(info->input_dev, KEY_SIDE_GESTURE, 1);
 					tsp_debug_info(true, &info->client->dev,
@@ -1381,6 +1399,8 @@ static irqreturn_t fts_interrupt_handler(int irq, void *handle)
 		pm_wakeup_event(info->input_dev->dev.parent, 1000);
 
 	evtcount = 0;
+
+
 	fts_read_reg(info, &regAdd[0], 3, (unsigned char *)&evtcount, 2);
 	evtcount = evtcount >> 10;
 
@@ -1586,6 +1606,11 @@ static int fts_parse_dt(struct i2c_client *client)
 	pdata->max_x = coords[0];
 	pdata->max_y = coords[1];
 
+	if (of_property_read_u32_array(np, "stm,edge_x_pos", &pdata->edge_x_pos, 1)) {
+		tsp_debug_err(true, dev, "Failed to get edge_x_pos property\n");
+		pdata->edge_x_pos = 1440;
+	}
+
 	if (of_property_read_u32_array(np, "stm,num_lines", lines, 2))
 		tsp_debug_dbg(true, dev, "skipped to get num_lines property\n");
 	else {
@@ -1721,6 +1746,8 @@ static int fts_setup_drv_data(struct i2c_client *client)
 	info->board = pdata;
 	info->irq = client->irq;
 	info->irq_type = info->board->irq_type;
+
+	info->edge_grip_mode = true;	// default;
 	info->irq_enabled = false;
 	info->touch_stopped = false;
 	info->panel_revision = info->board->panel_revision;
@@ -1919,6 +1946,9 @@ static int fts_probe(struct i2c_client *client, const struct i2c_device_id *idp)
 		info->finger[i].state = EVENTID_LEAVE_POINTER;
 		info->finger[i].mcount = 0;
 	}
+#ifdef FTS_SUPPORT_SIDE_GESTURE
+	wake_lock_init(&report_wake_lock, WAKE_LOCK_SUSPEND,"report_wake_lock");
+#endif
 
 	info->enabled = true;
 
@@ -2461,10 +2491,19 @@ static int fts_stop_device(struct fts_ts_info *info)
 	}
 
 	if (info->lowpower_mode) {
-#ifdef FTS_SUPPORT_SIDE_GESTURE
-		if (info->board->support_sidegesture) {
-			tsp_debug_info(true, &info->client->dev, "%s mainscreen disable flag:%d, clear\n", __func__, info->mainscr_disable);
+#ifdef FTS_ADDED_RESETCODE_IN_LPLM
+
+		info->mainscr_disable = false;
+		info->edge_grip_mode = false;
+#else	// clear cmd list.
+#ifdef FTS_SUPPORT_MAINSCREEN_DISBLE
+		dev_info(&info->client->dev, "%s mainscreen disebla flag:%d, clear 0\n", __func__, info->mainscr_disable);
 			set_mainscreen_disable_cmd((void *)info, 0);
+#endif
+		if(info->edge_grip_mode == false){
+			dev_info(&info->client->dev, "%s edge grip enable flag:%d, clear 1\n", __func__, info->edge_grip_mode);
+			longpress_grip_enable_mode(info, 1);		// default
+			grip_check_enable_mode(info, 1);			// default
 		}
 #endif
 		tsp_debug_info(true, &info->client->dev, "%s lowpower flag:%d\n", __func__, info->lowpower_flag);
@@ -2519,6 +2558,9 @@ static int fts_stop_device(struct fts_ts_info *info)
 
 static int fts_start_device(struct fts_ts_info *info)
 {
+	unsigned short addr = FTS_CMD_STRING_ACCESS;
+	int ret;
+
 	tsp_debug_info(true, &info->client->dev, "%s %s\n",
 			__func__, info->lowpower_mode ? "exit low power mode" : "");
 
@@ -2536,9 +2578,46 @@ static int fts_start_device(struct fts_ts_info *info)
 
 	if (info->lowpower_mode) {
 		/* low power mode command is sent after LCD OFF. turn on touch power @ LCD ON */
-		if (info->touch_stopped)
-			goto tsp_power_on;
+		if (info->touch_stopped) {
+			fts_power_ctrl(info, true);
 
+			info->touch_stopped = false;
+			info->reinit_done = false;
+
+			fts_reinit(info);
+
+			info->reinit_done = true;
+
+			enable_irq(info->irq);
+
+			if (info->fts_mode) {
+				ret = info->fts_write_to_string(info, &addr, &info->fts_mode, sizeof(info->fts_mode));
+				if (ret < 0)
+					dev_err(&info->client->dev, "%s: failed. ret: %d\n", __func__, ret);
+			}
+			goto out;
+		}
+#ifdef USE_RESET_WORK_EXIT_LOWPOWERMODE
+		schedule_work(&info->reset_work.work);
+		goto out;
+#endif
+
+#ifdef FTS_ADDED_RESETCODE_IN_LPLM
+
+		disable_irq(info->irq);
+		info->reinit_done = false;
+
+		fts_reinit(info);
+
+		info->reinit_done = true;
+		enable_irq(info->irq);
+
+		if (info->fts_mode) {
+			ret = info->fts_write_to_string(info, &addr, &info->fts_mode, sizeof(info->fts_mode));
+			if (ret < 0)
+				dev_err(&info->client->dev, "%s: failed. ret: %d\n", __func__, ret);
+		}
+#else
 		fts_command(info, SLEEPIN);
 		fts_delay(50);
 		fts_command(info, SLEEPOUT);
@@ -2552,11 +2631,10 @@ static int fts_start_device(struct fts_ts_info *info)
 		}
 #endif
 		fts_command(info, FLUSHBUFFER);
-
+#endif
 		if (device_may_wakeup(&info->client->dev))
 			disable_irq_wake(info->irq);
 	} else {
-tsp_power_on:
 		if (info->board->power)
 			info->board->power(info, true);
 		info->touch_stopped = false;

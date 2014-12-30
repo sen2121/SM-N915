@@ -301,6 +301,7 @@ struct fts_ts_info {
 	bool flip_enable;
 	bool mainscr_disable;
 	unsigned int cover_type;
+	bool edge_grip_mode;
 
 	unsigned char lowpower_flag;
 	bool lowpower_mode;

@@ -526,6 +526,13 @@ static int gsc_output_streamon(struct file *file, void *priv,
 	 */
 	gsc->out.ctx->out_path = GSC_FIMD;
 
+	ret = media_entity_pipeline_start(&gsc->out.vfd->entity,
+					gsc->pipeline.pipe);
+	if (ret) {
+		gsc_err("media entity pipeline start fail");
+		return ret;
+	}
+
 	ret = vb2_streamon(&gsc->out.vbq, type);
 
 	return ret;
@@ -538,6 +545,9 @@ static int gsc_output_streamoff(struct file *file, void *priv,
 	int ret = 0;
 
 	ret = vb2_streamoff(&gsc->out.vbq, type);
+	if (!ret)
+		media_entity_pipeline_stop(&gsc->out.vfd->entity);
+
 	return ret;
 }
 
@@ -913,12 +923,6 @@ static int gsc_output_open(struct file *file)
 
 	bts_otf_initialize(gsc->id, true);
 
-	ret = media_entity_pipeline_start(&gsc->out.vfd->entity,
-					gsc->pipeline.pipe);
-	if (ret) {
-		gsc_err("media entity pipeline start fail");
-		return ret;
-	}
 
 	return ret;
 }
@@ -938,9 +942,9 @@ static int gsc_output_close(struct file *file)
 		gsc_set_protected_content(gsc, false);
 	}
 
-	media_entity_pipeline_stop(&gsc->out.vfd->entity);
 	if (test_bit(ST_OUTPUT_STREAMON, &gsc->state)) {
 		gsc_info("driver is closed by force");
+		media_entity_pipeline_stop(&gsc->out.vfd->entity);
 		gsc_ctx_state_lock_clear(GSC_SRC_FMT | GSC_DST_FMT |
 				GSC_DST_CROP, gsc->out.ctx);
 
@@ -954,12 +958,6 @@ static int gsc_output_close(struct file *file)
 
 	if (q->streaming)
 		gsc_out_stop_streaming(q);
-
-	if (gsc->pipeline.disp != NULL) {
-		gsc_dbg("LINK Disable(%d)", gsc->id);
-		gsc->pipeline.disp = NULL;
-		gsc->out.ctx->out_path = 0;
-	}
 
 	ret = wait_event_timeout(gsc->irq_queue,
 		!test_bit(ST_OUTPUT_STREAMON, &gsc->state),

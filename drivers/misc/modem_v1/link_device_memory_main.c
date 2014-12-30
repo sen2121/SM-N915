@@ -19,12 +19,11 @@
  *
  */
 
+#define CREATE_TRACE_POINTS
+
 #include "modem_prj.h"
 #include "modem_utils.h"
 #include "link_device_memory.h"
-
-#define CREATE_TRACE_POINTS
-#include <trace/events/modem_if.h>
 
 #ifdef GROUP_MEM_LINK_DEVICE
 /**
@@ -365,10 +364,6 @@ static int tx_frames_to_dev(struct mem_link_device *mld,
 
 	while (1) {
 		struct sk_buff *skb;
-#ifdef DEBUG_MODEM_IF_LINK_TX
-		u8 *hdr;
-		u8 ch;
-#endif
 
 		skb = skb_dequeue(skb_txq);
 		if (unlikely(!skb))
@@ -382,13 +377,6 @@ static int tx_frames_to_dev(struct mem_link_device *mld,
 		}
 
 		tx_bytes += ret;
-
-#ifdef DEBUG_MODEM_IF_LINK_TX
-		hdr = skbpriv(skb)->lnk_hdr ? skb->data : NULL;
-		ch = skbpriv(skb)->sipc_ch;
-		log_ipc_pkt(ch, LINK, TX, skb, hdr);
-#endif
-
 		dev_kfree_skb_any(skb);
 	}
 
@@ -530,9 +518,6 @@ static int tx_frames_to_rb(struct sbd_ring_buffer *rb)
 
 	while (1) {
 		struct sk_buff *skb;
-#ifdef DEBUG_MODEM_IF
-		u8 *hdr;
-#endif
 
 		skb = skb_dequeue(skb_txq);
 		if (unlikely(!skb))
@@ -547,22 +532,11 @@ static int tx_frames_to_rb(struct sbd_ring_buffer *rb)
 
 		tx_bytes += ret;
 
-#ifdef DEBUG_MODEM_IF
-		hdr = skbpriv(skb)->lnk_hdr ? skb->data : NULL;
-#ifdef DEBUG_MODEM_IF_IP_DATA
-		if (sipc_ps_ch(rb->ch)) {
-			u8 *ip_pkt = skb->data;
-			if (hdr)
-				ip_pkt += sipc5_get_hdr_len(hdr);
-			print_ipv4_packet(ip_pkt, TX);
-		}
-#endif
-#ifdef DEBUG_MODEM_IF_LINK_TX
-		log_ipc_pkt(rb->ch, LINK, TX, skb, hdr);
-#endif
-#endif
-		trace_mif_event(skb, skb->len, FUNC);
+		log_ipc_pkt(LNK_TX, rb->ch, skb);
 
+#ifdef DEBUG_MODEM_IF
+		trace_mif_event(skb, skb->len, FUNC);
+#endif
 		dev_kfree_skb_any(skb);
 	}
 
@@ -705,7 +679,9 @@ static int xmit_ipc_to_rb(struct mem_link_device *mld, enum sipc_ch_id ch,
 		skb_queue_tail(skb_txq, skb);
 		start_tx_timer(mld, &mld->sbd_tx_timer);
 
+#ifdef DEBUG_MODEM_IF
 		trace_mif_event(skb, skb->len, FUNC);
+#endif
 	}
 
 	spin_unlock_irqrestore(&rb->lock, flags);
@@ -907,10 +883,6 @@ static int xmit_udl(struct mem_link_device *mld, struct io_device *iod,
 		else
 			msleep(50);
 	}
-
-#ifdef DEBUG_MODEM_IF_LINK_TX
-	log_ipc_pkt(ch, LINK, TX, skb, skb->data);
-#endif
 
 	dev_kfree_skb_any(skb);
 
@@ -1135,9 +1107,6 @@ static void pass_skb_to_demux(struct mem_link_device *mld, struct sk_buff *skb)
 	struct io_device *iod = skbpriv(skb)->iod;
 	int ret;
 	u8 ch = skbpriv(skb)->sipc_ch;
-#ifdef DEBUG_MODEM_IF_LINK_RX
-	u8 *hdr;
-#endif
 
 	if (unlikely(!iod)) {
 		mif_err("%s: ERR! No IOD for CH.%d\n", ld->name, ch);
@@ -1146,10 +1115,7 @@ static void pass_skb_to_demux(struct mem_link_device *mld, struct sk_buff *skb)
 		return;
 	}
 
-#ifdef DEBUG_MODEM_IF_LINK_RX
-	hdr = skbpriv(skb)->lnk_hdr ? skb->data : NULL;
-	log_ipc_pkt(ch, LINK, RX, skb, hdr);
-#endif
+	log_ipc_pkt(LNK_RX, ch, skb);
 
 	ret = iod->recv_skb_single(iod, ld, skb);
 	if (unlikely(ret < 0)) {
@@ -1283,7 +1249,7 @@ static struct sk_buff *rxq_read(struct mem_link_device *mld,
 	return skb;
 
 bad_msg:
-	evt_log(0, "%s: %s%s%s: ERR! BAD MSG: %02x %02x %02x %02x\n",
+	mif_err("%s: %s%s%s: ERR! BAD MSG: %02x %02x %02x %02x\n",
 		FUNC, ld->name, arrow(RX), ld->mc->name,
 		hdr[0], hdr[1], hdr[2], hdr[3]);
 	set_rxq_tail(dev, in);	/* Reset tail (out) pointer */
@@ -1433,9 +1399,7 @@ static void pass_skb_to_net(struct mem_link_device *mld, struct sk_buff *skb)
 		return;
 	}
 
-#if defined(DEBUG_MODEM_IF_LINK_RX) && defined(DEBUG_MODEM_IF_PS_DATA)
-	log_ipc_pkt(iod->id, LINK, RX, skb, priv->lnk_hdr ? skb->data : NULL);
-#endif
+	log_ipc_pkt(LNK_TX, iod->id, skb);
 
 	ret = iod->recv_net_skb(iod, ld, skb);
 	if (unlikely(ret < 0)) {
@@ -1762,13 +1726,13 @@ void mem_forced_cp_crash(struct mem_link_device *mld)
 	spin_unlock_irqrestore(&mld->lock, flags);
 
 	if (duplicated) {
-		evt_log(0, "%s: %s: ALREADY in progress <%pf>\n",
+		mif_err("%s: %s: ALREADY in progress <%pf>\n",
 			FUNC, ld->name, CALLER);
 		return;
 	}
 
 	if (!cp_online(mc)) {
-		evt_log(0, "%s: %s: %s.state %s != ONLINE <%pf>\n",
+		mif_err("%s: %s: %s.state %s != ONLINE <%pf>\n",
 			FUNC, ld->name, mc->name, mc_state(mc), CALLER);
 		return;
 	}
@@ -1799,7 +1763,7 @@ void mem_forced_cp_crash(struct mem_link_device *mld)
 		modemctl_notify_event(MDM_EVENT_CP_FORCE_CRASH);
 	}
 
-	evt_log(0, "%s->%s: CP_CRASH_REQ <%pf>\n", ld->name, mc->name, CALLER);
+	mif_err("%s->%s: CP_CRASH_REQ <%pf>\n", ld->name, mc->name, CALLER);
 
 #ifdef DEBUG_MODEM_IF
 	if (in_interrupt())
