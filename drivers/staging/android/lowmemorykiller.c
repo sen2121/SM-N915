@@ -388,7 +388,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	int minfree = 0;
 	enum lowmem_process_type proc_type = KILLABLE_PROCESS;
 	int selected_tasksize[MANAGED_PROCESS_TYPES] = {0};
-	short selected_oom_score_adj[MANAGED_PROCESS_TYPES];
+	int selected_oom_score_adj[MANAGED_PROCESS_TYPES];
 	int array_size = ARRAY_SIZE(lowmem_adj);
 	int other_free = global_page_state(NR_FREE_PAGES) - totalreserve_pages;
 	int other_file = global_page_state(NR_FILE_PAGES) -
