@@ -267,13 +267,13 @@ static ssize_t set_volt_table(struct device *dev, struct device_attribute *attr,
 	spin_lock_irqsave(&platform->gpu_dvfs_spinlock, flags);
 
 	if (tokens == 2 && target > -1) {
-		sanitize_min_max(t[1], 600000, 1137500);
+		sanitize_min_max(t[1], 600000, 1187500);
 		if ((rest = t[1] % 6250) != 0) t[1] += 6250-rest;
 		platform->table[target].voltage = t[1];
 	} else {
 		for (i = 0; i < tokens; i++) {
 			if ((rest = t[1] % 6250) != 0) t[1] += 6250-rest;
-			sanitize_min_max(t[i], 600000, 1137500);
+			sanitize_min_max(t[i], 600000, 1187500);
 			platform->table[i + max].voltage = t[i];
 		}
 	}
@@ -521,8 +521,8 @@ static ssize_t set_gpu_custom_max_clock(struct device *dev, struct device_attrib
 		return -ENOENT;
 	}
 
-	if ((gpu_max_clock < 100) || (gpu_max_clock > 700)) {
-		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: out of range [100~700] (%d)\n", __func__, gpu_max_clock);
+	if ((gpu_max_clock < 100) || (gpu_max_clock > 730)) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: out of range [100~730] (%d)\n", __func__, gpu_max_clock);
 		return -ENOENT;
 	}
 
@@ -567,8 +567,8 @@ static ssize_t set_gpu_custom_min_clock(struct device *dev, struct device_attrib
 		return -ENOENT;
 	}
 
-	if ((gpu_min_clock < 100) || (gpu_min_clock > 700)) {
-		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: out of range [100~700] (%d)\n", __func__, gpu_min_clock);
+	if ((gpu_min_clock < 100) || (gpu_min_clock > 730)) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: out of range [100~730] (%d)\n", __func__, gpu_min_clock);
 		return -ENOENT;
 	}
 
