@@ -136,9 +136,18 @@ static int ptrack_init_on;
 static struct ptrack **ptrack_cache;
 static unsigned ptrack_cache_table_size;
 
+#ifdef CONFIG_BUFFERED_PTRACK
+static int ptrack_log_count;
+
+#define PTRACK_LOG_COUNT (3)
+#endif
 #define PTRACK_MEGA_BYTES (1<<20)
 #define PTRACK_MEGA_PAGE_ORDERS (8)
-#define PTRACK_CACHE_ENTRY_NUM (PTRACK_MEGA_BYTES/(sizeof(struct ptrack) * 2))
+#ifdef CONFIG_BUFFERED_PTRACK
+#define PTRACK_CACHE_ENTRY_NUM (PTRACK_MEGA_BYTES/(sizeof(struct ptrack) * PTRACK_ITEM_NUM * PTRACK_LOG_COUNT))
+#else
+#define PTRACK_CACHE_ENTRY_NUM (PTRACK_MEGA_BYTES/(sizeof(struct ptrack) * PTRACK_ITEM_NUM))
+#endif
 #define PTRACK_CEIL(a, b) ((a + b - 1) / b)
 
 void __init ptrack_init(void)
@@ -165,6 +174,11 @@ void __init ptrack_init(void)
 	}
 
 	ptrack_init_on = 1;
+#ifdef CONFIG_BUFFERED_PTRACK
+	ptrack_log_count = PTRACK_LOG_COUNT;
+#endif
+
+	pr_info("%s: ptrack table size(%d)\n", __func__, ptrack_cache_table_size);
 
 	return;
 
@@ -179,7 +193,20 @@ err:
 	}
 
 	kfree(ptrack_cache);
+
+	pr_info("%s: ptrack error\n", __func__);
 }
+
+#ifdef CONFIG_BUFFERED_PTRACK
+static void ptrack_move_next(struct page *page, enum ptrack_item alloc)
+{
+	page->ptrack_curr[alloc]++;
+
+	if (page->ptrack_curr[alloc] >= PTRACK_LOG_COUNT) {
+		page->ptrack_curr[alloc] = 0;
+	}
+}
+#endif
 
 static int ptrack_check_target(struct page *page)
 {
@@ -204,11 +231,21 @@ static struct ptrack *_ptrack_alloc(struct page *page)
 
 	index = ((unsigned)page_to_phys(page) - (unsigned)virt_to_phys((void *)PAGE_OFFSET)) / PAGE_SIZE;
 	cache_idx = index / PTRACK_CACHE_ENTRY_NUM;
-	cache_offset = (index % PTRACK_CACHE_ENTRY_NUM) * 2;
+#ifdef CONFIG_BUFFERED_PTRACK
+	cache_offset = (index % PTRACK_CACHE_ENTRY_NUM) * PTRACK_ITEM_NUM * PTRACK_LOG_COUNT;
+#else
+	cache_offset = (index % PTRACK_CACHE_ENTRY_NUM) * PTRACK_ITEM_NUM;
+#endif
 
 	page->ptrack = &ptrack_cache[cache_idx][cache_offset];
 
-	memset(page->ptrack, 0x00, sizeof(struct ptrack) * 2);
+#ifdef CONFIG_BUFFERED_PTRACK
+	memset(page->ptrack, 0x00, sizeof(struct ptrack) * PTRACK_ITEM_NUM * PTRACK_LOG_COUNT);
+	page->ptrack_curr[PTRACK_ALLOC] = 0;
+	page->ptrack_curr[PTRACK_FREE] = 0;
+#else
+	memset(page->ptrack, 0x00, sizeof(struct ptrack) * PTRACK_ITEM_NUM);
+#endif
 
 	return page->ptrack;
 }
@@ -216,13 +253,28 @@ static struct ptrack *_ptrack_alloc(struct page *page)
 static struct ptrack *ptrack_get(struct page *page, enum ptrack_item alloc)
 {
 	struct ptrack *p;
+	int curr;
 
 	p = page->ptrack;
 
 	if (!p)
 		return NULL;
 
-	return p + alloc;
+#ifdef CONFIG_BUFFERED_PTRACK
+	/*
+		ptrack of a page :
+			(ptrack * PTRACK_LOG_COUNT for PTRACK_ALLOC) +
+			(ptrack * PTRACK_LOG_COUNT for PTRACK_FREE)
+	# of ptrack for a page is (PTRACK_ITEM_NUM * PTRACK_LOG_COUNT)
+	 */
+	curr = page->ptrack_curr[alloc];
+	if (alloc == PTRACK_FREE) {
+		curr += PTRACK_LOG_COUNT;
+	}
+#else
+	curr = alloc;
+#endif
+	return p + curr;
 }
 
 static void _ptrack_set(struct ptrack *p, unsigned long addr)
@@ -246,7 +298,9 @@ static void _ptrack_set(struct ptrack *p, unsigned long addr)
 		p->addrs[i] = 0;
 #endif
 	p->addr = addr;
+	preempt_disable();
 	p->cpu = smp_processor_id();
+	preempt_enable();
 	p->pid = current->pid;
 	p->when = cpu_clock(0);
 }
@@ -262,8 +316,13 @@ static void ptrack_set(struct page *page,
 	if (!p)
 		return;
 
-	if (addr)
+	if (addr) {
+#ifdef CONFIG_BUFFERED_PTRACK
+		ptrack_move_next(page, alloc);
+#endif
+		p = ptrack_get(page, alloc);
 		_ptrack_set(p, addr);
+	}
 }
 
 #endif /* CONFIG_PTRACK_DEBUG */
@@ -1512,6 +1571,17 @@ void free_hot_cold_page(struct page *page, int cold)
 	unsigned long flags;
 	int migratetype;
 
+#ifdef CONFIG_SCFS_LOWER_PAGECACHE_INVALIDATION
+	/*
+	   struct scfs_sb_info *sbi;
+
+	   if (PageScfslower(page) || PageNocache(page)) {
+	   sbi = SCFS_S(page->mapping->host->i_sb);
+	   sbi->scfs_lowerpage_reclaim_count++;
+	   }
+	 */
+#endif
+
 	if (!free_pages_prepare(page, 0))
 		return;
 
@@ -1861,7 +1931,7 @@ static int ptrack_debugfs_show(struct seq_file *s, void *data)
 					flag = 0;
 
 				seq_printf(s, "[0x%x] ALLOC(order:%d) - cpu(%d)\tpid(%04d)\twhen(0x%016llx)\taddr(0x%08x)\t%s\n",
-								(unsigned)page_address(p), i, ptrack_alloc->cpu, ptrack_alloc->pid, ptrack_alloc->when, (unsigned)ptrack_alloc->addr, state[flag]);
+							(unsigned)page_address(p), i, ptrack_alloc->cpu, ptrack_alloc->pid, ptrack_alloc->when, (unsigned)ptrack_alloc->addr, state[flag]);
 				if (track_on)
 					ptrack_debugfs_show_stack(s, ptrack_alloc);
 				seq_printf(s, "[0x%x] FREE (order:%d) - cpu(%d)\tpid(%04d)\twhen(0x%016llx)\taddr(0x%08x)\t%s\n",
@@ -1885,11 +1955,11 @@ static int ptrack_debugfs_show(struct seq_file *s, void *data)
 					flag = 0;
 
 				seq_printf(s, "[0x%x] ALLOC(order:%d) - cpu(%d)\tpid(%04d)\twhen(0x%016llx)\taddr(0x%08x)\t%s\n",
-								(unsigned)page_address(p), i, ptrack_alloc->cpu, ptrack_alloc->pid, ptrack_alloc->when, (unsigned)ptrack_alloc->addr, state[flag]);
+							(unsigned)page_address(p), i, ptrack_alloc->cpu, ptrack_alloc->pid, ptrack_alloc->when, (unsigned)ptrack_alloc->addr, state[flag]);
 				if (track_on)
 					ptrack_debugfs_show_stack(s, ptrack_alloc);
 				seq_printf(s, "[0x%x] FREE (order:%d) - cpu(%d)\tpid(%04d)\twhen(0x%016llx)\taddr(0x%08x)\t%s\n",
-								(unsigned)page_address(p), i, ptrack_free->cpu, ptrack_free->pid, ptrack_free->when, (unsigned)ptrack_free->addr, state[flag]);
+							(unsigned)page_address(p), i, ptrack_free->cpu, ptrack_free->pid, ptrack_free->when, (unsigned)ptrack_free->addr, state[flag]);
 				if (track_on)
 					ptrack_debugfs_show_stack(s, ptrack_free);
 
@@ -2761,6 +2831,61 @@ bool gfp_pfmemalloc_allowed(gfp_t gfp_mask)
 	return !!(gfp_to_alloc_flags(gfp_mask) & ALLOC_NO_WATERMARKS);
 }
 
+#if defined(CONFIG_SEC_SLOWPATH)
+unsigned int oomk_state; /* 0 none, bit_0 time's up, bit_1 OOMK */
+
+struct slowpath_pressure {
+	unsigned int total_jiffies;
+	struct mutex slow_lock;
+} slowpath;
+
+/* slowtime - milliseconds time spend int __alloc_pages_slowpath() */
+static void slowpath_pressure(unsigned int slowtime)
+{
+	mutex_lock(&slowpath.slow_lock);
+	if (unlikely(slowpath.total_jiffies + slowtime >= UINT_MAX))
+		slowpath.total_jiffies = UINT_MAX;
+	else
+		slowpath.total_jiffies += slowtime;
+	mutex_unlock(&slowpath.slow_lock);
+}
+
+unsigned int get_and_reset_timeup(void)
+{
+	bool val = 0;
+
+	val = oomk_state;
+	oomk_state = 0;
+	pr_debug("%s: timeup %u\n", __func__, val);
+
+	return val;
+}
+
+unsigned int get_and_reset_slowtime(void)
+{
+	static bool first_read = false;
+	unsigned int slowtime = 0;
+
+	slowtime = slowpath.total_jiffies;
+	if (unlikely(first_read == false)) {
+		first_read = true;
+		slowtime = 0;
+	}
+	slowpath.total_jiffies = 0;
+	pr_debug("%s: slowtime %u\n", __func__, slowtime);
+
+	return slowtime;
+}
+
+static int __init slowpath_init(void)
+{
+	mutex_init(&slowpath.slow_lock);
+	return 0;
+}
+
+module_init(slowpath_init)
+#endif
+
 static inline struct page *
 __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 	struct zonelist *zonelist, enum zone_type high_zoneidx,
@@ -2776,9 +2901,12 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 	bool deferred_compaction = false;
 	bool contended_compaction = false;
 #if defined(CONFIG_SEC_OOM_KILLER) || defined(CONFIG_OOM_KILLER_TIMEOUT)
-	unsigned long oom_invoke_timeout = jiffies + HZ/4;
+	unsigned long oom_invoke_timeout = jiffies + HZ/64;
 #endif
 
+#ifdef CONFIG_SEC_SLOWPATH
+	unsigned long slowpath_time = jiffies;
+#endif
 	/*
 	 * In the slowpath, we sanity check order to avoid ever trying to
 	 * reclaim >= MAX_ORDER areas which will never succeed. Callers may
@@ -2912,9 +3040,14 @@ rebalance:
 			    !(gfp_mask & __GFP_NOFAIL))
 				goto nopage;
 #if defined(CONFIG_SEC_OOM_KILLER) || defined(CONFIG_OOM_KILLER_TIMEOUT)
-			if (did_some_progress)
+			if (did_some_progress){
 				pr_info("time's up : calling "
 					"__alloc_pages_may_oom(o:%d, gfp:0x%x)\n", order, gfp_mask);
+
+#if defined(CONFIG_SEC_SLOWPATH)
+				oomk_state |= 0x01;
+#endif
+			}
 
 #endif
 
@@ -2944,7 +3077,7 @@ rebalance:
 			}
 
 #if defined(CONFIG_SEC_OOM_KILLER) || defined(CONFIG_OOM_KILLER_TIMEOUT)
-			oom_invoke_timeout = jiffies + HZ/4;
+			oom_invoke_timeout = jiffies + HZ/64;
 #endif
 			goto restart;
 		}
@@ -2977,11 +3110,20 @@ rebalance:
 
 nopage:
 	warn_alloc_failed(gfp_mask, order, NULL);
+#if defined(CONFIG_SEC_SLOWPATH)
+	slowpath_time = jiffies - slowpath_time;
+	if (wait && slowpath_time)
+		slowpath_pressure(slowpath_time);
+#endif
 	return page;
 got_pg:
 	if (kmemcheck_enabled)
 		kmemcheck_pagealloc_alloc(page, order, gfp_mask);
-
+#if defined(CONFIG_SEC_SLOWPATH)
+	slowpath_time = jiffies - slowpath_time;
+	if (wait && slowpath_time)
+		slowpath_pressure(slowpath_time);
+#endif
 	return page;
 }
 
@@ -6657,6 +6799,10 @@ static const struct trace_print_flags pageflag_names[] = {
 #endif
 #ifdef CONFIG_SDP
 	{1UL << PG_sensitive,	"sensitive"	},
+#endif
+#ifdef CONFIG_SCFS_LOWER_PAGECACHE_INVALIDATION
+	{1UL << PG_scfslower,		"scfslower"	},
+	{1UL << PG_nocache,		"nocache"	},
 #endif
 };
 

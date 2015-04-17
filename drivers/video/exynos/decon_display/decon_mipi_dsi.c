@@ -528,9 +528,6 @@ int s5p_mipi_dsi_partial_area_command(struct mipi_dsim_device *dsim,
 		}
 		dev_dbg(dsim->dev, "%s: y = %d,  h = %d\n", __func__, y, h);
 	}
-#if defined(CONFIG_SOC_EXYNOS5433) /* workaround code */
-	s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_SHORT_WRITE, MIPI_DCS_WRITE_MEMORY_START, 0);
-#endif
 
 	dsim->lcd_win.x = x;
 	dsim->lcd_win.y = y;

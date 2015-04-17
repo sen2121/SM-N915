@@ -10,6 +10,7 @@
 
 #define FTS_ADDED_RESETCODE_IN_LPLM		//all TB, TR chn for lpm mode.
 
+#define FTS_SUPPORT_SEC_SWIPE
 
 extern struct fts_callbacks *fts_charger_callbacks;
 struct fts_callbacks {
@@ -48,8 +49,8 @@ struct fts_i2c_platform_data {
 	bool support_mshover;
 	int max_x;
 	int max_y;
-	int edge_x_pos;
 	int max_width;
+	int grip_area;
 	int SenseChannelLength;
 	int ForceChannelLength;
 	unsigned char panel_revision;	/* to identify panel info */

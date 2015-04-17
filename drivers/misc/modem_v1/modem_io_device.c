@@ -23,10 +23,12 @@
 #include <linux/etherdevice.h>
 #include <linux/device.h>
 #include <linux/module.h>
-#include <trace/events/modem_if.h>
 
 #include "modem_prj.h"
 #include "modem_utils.h"
+
+static int napi_weight = 64;
+module_param(napi_weight, int, S_IRUGO);
 
 static u8 sipc5_build_config(struct io_device *iod, struct link_device *ld,
 			     unsigned int count);
@@ -69,9 +71,7 @@ static ssize_t store_waketime(struct device *dev,
 		return count;
 
 	iod->waketime = msecs_to_jiffies(msec);
-#ifdef DEBUG_MODEM_IF
 	mif_err("%s: waketime = %lu ms\n", iod->name, msec);
-#endif
 
 	if (iod->format == IPC_MULTI_RAW) {
 		struct modem_shared *msd = iod->msd;
@@ -81,10 +81,8 @@ static ssize_t store_waketime(struct device *dev,
 			iod = get_iod_with_channel(msd, i);
 			if (iod) {
 				iod->waketime = msecs_to_jiffies(msec);
-#ifdef DEBUG_MODEM_IF
 				mif_err("%s: waketime = %lu ms\n",
 					iod->name, msec);
-#endif
 			}
 		}
 	}
@@ -329,15 +327,16 @@ static int rx_multi_pdp(struct sk_buff *skb)
 		skb_pull(skb, sizeof(struct ethhdr));
 	}
 
-#ifdef DEBUG_MODEM_IF_IP_DATA
-	print_ipv4_packet(skb->data, RX);
-#endif
 	log_ipc_pkt(PS_RX, iod->id, skb);
 
+#ifdef CONFIG_LINK_DEVICE_NAPI
+	ret = netif_receive_skb(skb);
+#else
 	if (in_interrupt())
 		ret = netif_rx(skb);
 	else
 		ret = netif_rx_ni(skb);
+#endif
 
 	if (ret != NET_RX_SUCCESS) {
 		mif_err_limited("%s: %s<-%s: ERR! netif_rx fail\n",
@@ -378,6 +377,7 @@ static int rx_demux(struct link_device *ld, struct sk_buff *skb)
 	if (atomic_read(&iod->opened) <= 0) {
 		mif_err_limited("%s: ERR! %s is not opened\n",
 				ld->name, iod->name);
+		modemctl_notify_event(MDM_EVENT_CP_ABNORMAL_RX);
 		return -ENODEV;
 	}
 
@@ -914,6 +914,7 @@ static int io_dev_recv_net_skb_from_link_dev(struct io_device *iod,
 		struct modem_ctl *mc = iod->mc;
 		mif_err_limited("%s: %s<-%s: ERR! %s is not opened\n",
 				ld->name, iod->name, mc->name, iod->name);
+		modemctl_notify_event(MDM_EVENT_CP_ABNORMAL_RX);
 		return -ENODEV;
 	}
 
@@ -1335,14 +1336,6 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 	unsigned int headroom;
 	unsigned int tailroom;
 	unsigned int tx_bytes;
-#ifdef DEBUG_MODEM_IF
-	struct timespec ts;
-#endif
-
-#ifdef DEBUG_MODEM_IF
-	/* Record the timestamp */
-	getnstimeofday(&ts);
-#endif
 
 	if (iod->format <= IPC_RFS && iod->id == 0)
 		return -EINVAL;
@@ -1394,10 +1387,6 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 	skbpriv(skb)->lnk_hdr = iod->link_header;
 	skbpriv(skb)->sipc_ch = iod->id;
 
-#ifdef DEBUG_MODEM_IF
-	/* Copy the timestamp to the skb */
-	memcpy(&skbpriv(skb)->ts, &ts, sizeof(struct timespec));
-#endif
 	log_ipc_pkt(IOD_TX, iod->id, skb);
 
 	/* Build SIPC5 link header*/
@@ -1413,9 +1402,9 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 	/**
 	 * Send the skb with a link device
 	 */
-#ifdef DEBUG_MODEM_IF
+
 	trace_mif_event(skb, tx_bytes, FUNC);
-#endif
+
 	ret = ld->send(ld, iod, skb);
 	if (ret < 0) {
 		mif_err("%s->%s: ERR! %s->send fail:%d (tx_bytes:%d len:%ld)\n",
@@ -1504,6 +1493,7 @@ static int vnet_open(struct net_device *ndev)
 
 	list_for_each_entry(ld, &msd->link_dev_list, list) {
 		if (IS_CONNECTED(iod, ld) && ld->init_comm) {
+			vnet->ld = ld;
 			ret = ld->init_comm(ld, iod);
 			if (ret < 0) {
 				mif_err("%s<->%s: ERR! init_comm fail(%d)\n",
@@ -1515,6 +1505,9 @@ static int vnet_open(struct net_device *ndev)
 	}
 
 	netif_start_queue(ndev);
+#ifdef CONFIG_LINK_DEVICE_NAPI
+	napi_enable(&iod->napi);
+#endif
 
 	mif_err("%s (opened %d) by %s\n",
 		iod->name, atomic_read(&iod->opened), current->comm);
@@ -1538,6 +1531,9 @@ static int vnet_stop(struct net_device *ndev)
 	}
 
 	netif_stop_queue(ndev);
+#ifdef CONFIG_LINK_DEVICE_NAPI
+	napi_disable(&iod->napi);
+#endif
 
 	mif_err("%s (opened %d) by %s\n",
 		iod->name, atomic_read(&iod->opened), current->comm);
@@ -1559,14 +1555,6 @@ static int vnet_xmit(struct sk_buff *skb, struct net_device *ndev)
 	unsigned int headroom;
 	unsigned int tailroom;
 	unsigned int tx_bytes;
-#ifdef DEBUG_MODEM_IF
-	struct timespec ts;
-#endif
-
-#ifdef DEBUG_MODEM_IF
-	/* Record the timestamp */
-	getnstimeofday(&ts);
-#endif
 
 	if (unlikely(!cp_online(mc))) {
 		if (!netif_queue_stopped(ndev))
@@ -1616,10 +1604,6 @@ static int vnet_xmit(struct sk_buff *skb, struct net_device *ndev)
 	skbpriv(skb_new)->lnk_hdr = iod->link_header;
 	skbpriv(skb_new)->sipc_ch = iod->id;
 
-#ifdef DEBUG_MODEM_IF
-	/* Copy the timestamp to the skb */
-	memcpy(&skbpriv(skb_new)->ts, &ts, sizeof(struct timespec));
-#endif
 	log_ipc_pkt(PS_TX, iod->id, skb_new);
 
 	/* Build SIPC5 link header*/
@@ -1669,13 +1653,6 @@ static int vnet_xmit(struct sk_buff *skb, struct net_device *ndev)
 	return NETDEV_TX_OK;
 
 retry:
-	/*
-	If @skb has been expanded to $skb_new, only $skb_new must be freed here
-	because @skb will be reused by NET_TX.
-	*/
-	if (skb_new && skb_new != skb)
-		dev_kfree_skb_any(skb_new);
-
 	return NETDEV_TX_BUSY;
 
 drop:
@@ -1841,6 +1818,11 @@ int sipc5_init_io_device(struct io_device *iod)
 			return -ENOMEM;
 		}
 
+#ifdef CONFIG_LINK_DEVICE_NAPI
+		netif_napi_add(iod->ndev, &iod->napi,
+				mem_netdev_poll, napi_weight);
+#endif
+
 		ret = register_netdev(iod->ndev);
 		if (ret) {
 			mif_info("%s: ERR! register_netdev fail\n", iod->name);
@@ -1894,4 +1876,5 @@ int sipc5_init_io_device(struct io_device *iod)
 
 	return ret;
 }
+
 

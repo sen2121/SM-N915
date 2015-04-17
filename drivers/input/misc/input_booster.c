@@ -17,6 +17,7 @@
 static const char * const booster_device_name[BOOSTER_DEVICE_MAX] = {
 	"touch",
 	"pen",
+	"key",
 };
 
 static unsigned int dbg_level;
@@ -51,7 +52,7 @@ static void input_booster_set_hmp_boost(struct input_booster *data, enum booster
 		return;
 	}
 
-	retval = set_hmp_semiboost(enable);
+	retval = set_hmp_boost(enable);
 	if (retval < 0) {
 		dev_err(data->dev, "%s : Fail to %s HMP[%d] for %s.\n",
 			__func__, enable ? "Enabled" : "Disabled", retval, booster_device_name[device_type]);
@@ -63,6 +64,94 @@ static void input_booster_set_hmp_boost(struct input_booster *data, enum booster
 		__func__, enable ? "Enabled" : "Disabled",booster_device_name[device_type]);
 }
 #endif
+
+/* Key */
+DECLARE_DVFS_DELAYED_WORK_FUNC(CHG, KEY)
+{
+	struct booster_dvfs *dvfs =
+		container_of(work, struct booster_dvfs, dvfs_chg_work.work);
+	struct input_booster *data = dev_get_drvdata(dvfs->parent_dev);
+
+	mutex_lock(&dvfs->lock);
+
+	remove_qos(&dvfs->cpu_qos);
+	SET_HMP(data, BOOSTER_DEVICE_KEY, false);
+
+	dvfs->lock_status = false;
+	DVFS_DEV_DBG(DBG_DVFS, data->dev, "%s : DVFS OFF\n", __func__);
+
+	mutex_unlock(&dvfs->lock);
+}
+
+DECLARE_DVFS_DELAYED_WORK_FUNC(OFF, KEY)
+{
+	struct booster_dvfs *dvfs =
+		container_of(work, struct booster_dvfs, dvfs_off_work.work);
+	struct input_booster *data = dev_get_drvdata(dvfs->parent_dev);
+
+	mutex_lock(&dvfs->lock);
+
+	remove_qos(&dvfs->cpu_qos);
+	SET_HMP(data, BOOSTER_DEVICE_KEY, false);
+
+	dvfs->lock_status = false;
+	DVFS_DEV_DBG(DBG_DVFS, data->dev, "%s : DVFS OFF\n", __func__);
+
+	mutex_unlock(&dvfs->lock);
+}
+
+DECLARE_DVFS_WORK_FUNC(SET, KEY)
+{
+	struct input_booster *data = (struct input_booster *)booster_data;
+	struct booster_dvfs *dvfs = data->dvfses[BOOSTER_DEVICE_KEY];
+
+	if (!dvfs || !dvfs->initialized) {
+		dev_err(data->dev, "%s: Dvfs is not initialized\n",	__func__);
+		return;
+	}
+
+	mutex_lock(&dvfs->lock);
+
+	if ((!dvfs->level)&&(!dvfs->lock_status)) {
+		dev_err(data->dev, "%s : Skip to set booster due to level 0\n", __func__);
+		goto out;
+	}
+
+	switch (booster_mode) {
+	case BOOSTER_MODE_ON:
+		cancel_delayed_work(&dvfs->dvfs_off_work);
+		cancel_delayed_work(&dvfs->dvfs_chg_work);
+
+		SET_HMP(data, BOOSTER_DEVICE_KEY, dvfs->freqs[BOOSTER_LEVEL1].hmp_boost);
+		set_qos(&dvfs->cpu_qos, PM_QOS_CPU_FREQ_MIN, dvfs->freqs[BOOSTER_LEVEL1].cpu_freq);
+
+		DVFS_DEV_DBG(DBG_DVFS, data->dev, "%s : DVFS ON [level %d->1][start time [%d]]\n",
+			__func__, dvfs->level, dvfs->times[BOOSTER_LEVEL1].head_time);
+
+		schedule_delayed_work(&dvfs->dvfs_chg_work,
+			msecs_to_jiffies(dvfs->times[BOOSTER_LEVEL1].head_time));
+		dvfs->lock_status = true;
+	break;
+	case BOOSTER_MODE_OFF:
+		if (dvfs->lock_status)
+			schedule_delayed_work(&dvfs->dvfs_off_work,
+							msecs_to_jiffies(dvfs->times[BOOSTER_LEVEL1].tail_time));
+	break;
+	case BOOSTER_MODE_FORCE_OFF:
+		if (dvfs->lock_status) {
+			cancel_delayed_work(&dvfs->dvfs_chg_work);
+			cancel_delayed_work(&dvfs->dvfs_off_work);
+			schedule_work(&dvfs->dvfs_off_work.work);
+		}
+	break;
+	default:
+	break;
+	}
+
+out:
+	mutex_unlock(&dvfs->lock);
+	return;
+}
 
 /* Touch */
 DECLARE_DVFS_DELAYED_WORK_FUNC(CHG, TOUCH)
@@ -479,6 +568,9 @@ static void input_booster_event_work(struct work_struct *work)
 			i, booster_device_name[event.device_type], event.mode);
 
 		switch (event.device_type) {
+		case BOOSTER_DEVICE_KEY:
+			DVFS_WORK_FUNC(SET, KEY)(data, event.mode);
+		break;
 		case BOOSTER_DEVICE_TOUCH:
 			DVFS_WORK_FUNC(SET, TOUCH)(data, event.mode);
 		break;
@@ -876,6 +968,11 @@ static int input_booster_init_dvfs(struct input_booster *data, struct booster_de
 	}
 
 	switch (device_type) {
+	case BOOSTER_DEVICE_KEY:
+		INIT_DELAYED_WORK(&dvfs->dvfs_chg_work, DVFS_WORK_FUNC(CHG, KEY));
+		INIT_DELAYED_WORK(&dvfs->dvfs_off_work, DVFS_WORK_FUNC(OFF, KEY));
+		dvfs->set_dvfs_lock = DVFS_WORK_FUNC(SET, KEY);
+	break;
 	case BOOSTER_DEVICE_TOUCH:
 		INIT_DELAYED_WORK(&dvfs->dvfs_chg_work, DVFS_WORK_FUNC(CHG, TOUCH));
 		INIT_DELAYED_WORK(&dvfs->dvfs_off_work, DVFS_WORK_FUNC(OFF, TOUCH));

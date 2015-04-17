@@ -92,12 +92,13 @@ static int touchled_cmd_reversed;
 #ifdef LED_LDO_WITH_REGULATOR
 static void change_touch_key_led_voltage(struct device *dev, int vol_mv)
 {
-	struct regulator *tled_regulator;
+	struct regulator *tled_regulator = NULL;
 
 	tled_regulator = regulator_get(NULL, TK_LED_REGULATOR_NAME);
-	if (IS_ERR(tled_regulator)) {
+	if (IS_ERR_OR_NULL(tled_regulator)) {
 		tk_debug_err(true, dev, "%s: failed to get resource %s\n", __func__,
 		       "touchkey_led");
+		tled_regulator = NULL;
 		return;
 	}
 	regulator_set_voltage(tled_regulator, vol_mv * 1000, vol_mv * 1000);
@@ -1039,8 +1040,8 @@ static irqreturn_t touchkey_interrupt(int irq, void *dev_id)
 	struct touchkey_i2c *tkey_i2c = dev_id;
 	u8 data[3];
 	int ret;
-	int keycode_type = 0;
-	int pressed;
+	int i;
+	int keycode_data[touchkey_count];
 
 	if (unlikely(!touchkey_probe)) {
 		tk_debug_err(true, &tkey_i2c->client->dev, "%s: Touchkey is not probed\n", __func__);
@@ -1051,25 +1052,26 @@ static irqreturn_t touchkey_interrupt(int irq, void *dev_id)
 	if (ret < 0)
 		return IRQ_HANDLED;
 
-	keycode_type = (data[0] & TK_BIT_KEYCODE);
-	pressed = !(data[0] & TK_BIT_PRESS_EV);
+	keycode_data[1] = data[0] & 0x3;
+	keycode_data[2] = (data[0] >> 2) & 0x3;
 
-	if (keycode_type <= 0 || keycode_type >= touchkey_count) {
-		tk_debug_dbg(true, &tkey_i2c->client->dev, "keycode_type err\n");
-		return IRQ_HANDLED;
+	for (i = 1; i < touchkey_count; i++) {
+		if (keycode_data[i]) {
+			input_report_key(tkey_i2c->input_dev, touchkey_keycode[i], (keycode_data[i] % 2));
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+			tk_debug_info(true, &tkey_i2c->client->dev, "keycode: %d %s %#x %#x %d\n",
+					touchkey_keycode[i], (keycode_data[i] % 2) ? "PRESS" : "RELEASE",
+					tkey_i2c->fw_ver_ic, tkey_i2c->md_ver_ic, tkey_i2c->mc_data.cur_mode);
+#else
+			tk_debug_info(true, &tkey_i2c->client->dev, " %s %#x %#x %d\n",
+					(keycode_data[i] % 2) ? "PRESS" : "RELEASE", tkey_i2c->fw_ver_ic,
+					tkey_i2c->md_ver_ic, tkey_i2c->mc_data.cur_mode);
+#endif
+		}
 	}
 
-	input_report_key(tkey_i2c->input_dev,
-			 touchkey_keycode[keycode_type], pressed);
 	input_sync(tkey_i2c->input_dev);
-#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
-	tk_debug_info(true, &tkey_i2c->client->dev, "keycode:%d pressed:%d %#x, %#x %d\n",
-	touchkey_keycode[keycode_type], pressed, tkey_i2c->fw_ver_ic,
-	tkey_i2c->md_ver_ic, tkey_i2c->mc_data.cur_mode);
-#else
-	tk_debug_info(true, &tkey_i2c->client->dev, "pressed:%d %#x, %#x, %d\n",
-		pressed, tkey_i2c->fw_ver_ic, tkey_i2c->md_ver_ic, tkey_i2c->mc_data.cur_mode);
-#endif
+
 	return IRQ_HANDLED;
 }
 
@@ -2120,7 +2122,7 @@ static int touchkey_power_on(void *data, bool on)
 {
 	struct touchkey_i2c *tkey_i2c = (struct touchkey_i2c *)data;
 	struct device *dev = &tkey_i2c->client->dev;
-	struct regulator *regulator;
+	struct regulator *regulator = NULL;
 	static bool enabled;
 	int ret = 0;
 	int state = on ? I_STATE_ON_IRQ : I_STATE_OFF_IRQ;
@@ -2134,9 +2136,10 @@ static int touchkey_power_on(void *data, bool on)
 	tk_debug_info(true, dev, "%s: %s",__func__,(on)?"on":"off");
 
 	regulator = regulator_get(NULL, TK_REGULATOR_NAME);
-	if (IS_ERR(regulator)) {
+	if (IS_ERR_OR_NULL(regulator)) {
 		tk_debug_err(true, dev,
 			"%s : TK regulator_get failed\n", __func__);
+		regulator = NULL;
 		return -EIO;
 	}
 
@@ -2165,7 +2168,7 @@ static int touchkey_power_on(void *data, bool on)
 static int touchkey_led_power_on(void *data, bool on)
 {
 	struct touchkey_i2c *tkey_i2c = (struct touchkey_i2c *)data;
-	struct regulator *regulator;
+	struct regulator *regulator = NULL;
 	static bool enabled;
 	int ret = 0;
 
@@ -2179,8 +2182,10 @@ static int touchkey_led_power_on(void *data, bool on)
 
 	if (on) {
 		regulator = regulator_get(NULL, TK_LED_REGULATOR_NAME);
-		if (IS_ERR(regulator))
-			return 0;
+		if (IS_ERR_OR_NULL(regulator)){
+			regulator = NULL;
+			return -EINVAL;
+		}
 		ret = regulator_enable(regulator);
 		if (ret) {
 			tk_debug_err(true, &tkey_i2c->client->dev,

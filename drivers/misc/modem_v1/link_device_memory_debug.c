@@ -44,7 +44,7 @@
 
 void print_pm_status(struct mem_link_device *mld)
 {
-#if defined(DEBUG_MODEM_IF) && defined(CONFIG_LINK_POWER_MANAGEMENT)
+#ifdef CONFIG_LINK_POWER_MANAGEMENT
 	struct link_device *ld = &mld->link_dev;
 	unsigned int magic;
 	int ap_wakeup;

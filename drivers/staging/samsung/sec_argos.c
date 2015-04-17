@@ -43,6 +43,7 @@ enum {
 	INTFREQ,
 	TASK_AFFINITY_EN,
 	IRQ_AFFINITY_EN,
+	HMP_BOOST_EN,
 	ITEM_MAX,
 };
 
@@ -84,8 +85,11 @@ struct argos {
 	bool task_hotplug_disable;
 	struct list_head irq_affinity_list;
 	bool irq_hotplug_disable;
+	bool hmpboost_enable;
 	bool argos_block;
 	struct blocking_notifier_head argos_notifier;
+	/* protect prev_level, qos, task/irq_hotplug_disable, hmpboost_enable */
+	struct mutex level_mutex;
 };
 
 struct argos_platform_data {
@@ -349,6 +353,31 @@ int argos_irq_affinity_apply(int dev_num, bool enable)
 	return result;
 }
 
+int argos_hmpboost_apply(int dev_num, bool enable)
+{
+	bool *hmpboost_enable;
+
+	hmpboost_enable = &argos_pdata->devices[dev_num].hmpboost_enable;
+
+	if (enable) {
+		/* disable -> enable */
+		if (*hmpboost_enable == false) {
+			set_hmp_boost(true);
+			*hmpboost_enable = true;
+			pr_info("%s: hmp boost enable [%d]\n", __func__, dev_num);
+		}
+	} else {
+		/* enable -> disable */
+		if (*hmpboost_enable == true) {
+			set_hmp_boost(false);
+			*hmpboost_enable = false;
+			pr_info("%s: hmp boost disable [%d]\n", __func__, dev_num);
+		}
+	}
+
+	return 0;
+}
+
 static void argos_freq_unlock(int type)
 {
 	struct argos_pm_qos *qos = argos_pdata->devices[type].qos;
@@ -443,10 +472,13 @@ void argos_block_enable(char *req_name, bool set)
 
 	if (set) {
 		cnode->argos_block = true;
+		mutex_lock(&cnode->level_mutex);
 		argos_freq_unlock(dev_num);
 		argos_task_affinity_apply(dev_num, 0);
 		argos_irq_affinity_apply(dev_num, 0);
+		argos_hmpboost_apply(dev_num, 0);
 		cnode->prev_level = -1;
+		mutex_unlock(&cnode->level_mutex);
 	} else {
 		cnode->argos_block = false;
 	}
@@ -509,10 +541,20 @@ static int argos_pm_qos_notify(struct notifier_block *nfb,
 		}
 	}
 
-	/* decrese 1 level to match proper table */
+	/* decrease 1 level to match proper table */
 	level--;
 	if (!argos_blocked) {
 		if (level != prev_level) {
+			if (mutex_trylock(&cnode->level_mutex) == 0) {
+				/*
+				 * If the mutex is already locked, it means this argos
+				 * is being blocked or is handling another change.
+				 * We don't need to wait.
+				 */
+				pr_warn("%s: skip name:%s, speed:%ldMbps, prev level:%d, request level:%d\n",
+						__func__, cnode->desc, speed, prev_level, level);
+				goto out;
+			}
 			pr_info("%s: name:%s, speed:%ldMbps, prev level:%d, request level:%d\n",
 					__func__, cnode->desc, speed, prev_level, level);
 
@@ -524,16 +566,20 @@ static int argos_pm_qos_notify(struct notifier_block *nfb,
 				argos_freq_unlock(type);
 				argos_task_affinity_apply(type, 0);
 				argos_irq_affinity_apply(type, 0);
+				argos_hmpboost_apply(type, 0);
 			} else {
-				unsigned affinity_enable;
+				unsigned enable_flag;
 
 				argos_freq_lock(type, level);
 
-				affinity_enable = argos_pdata->devices[type].tables[level].items[TASK_AFFINITY_EN];
-				argos_task_affinity_apply(type, affinity_enable);
+				enable_flag = argos_pdata->devices[type].tables[level].items[TASK_AFFINITY_EN];
+				argos_task_affinity_apply(type, enable_flag);
 
-				affinity_enable = argos_pdata->devices[type].tables[level].items[IRQ_AFFINITY_EN];
-				argos_irq_affinity_apply(type, affinity_enable);
+				enable_flag = argos_pdata->devices[type].tables[level].items[IRQ_AFFINITY_EN];
+				argos_irq_affinity_apply(type, enable_flag);
+
+				enable_flag = argos_pdata->devices[type].tables[level].items[HMP_BOOST_EN];
+				argos_hmpboost_apply(type, enable_flag);
 
 				if (cnode->argos_notifier.head) {
 					pr_debug("%s: Call argos notifier(%s lev:%d)\n", __func__, cnode->desc, level);
@@ -542,12 +588,13 @@ static int argos_pm_qos_notify(struct notifier_block *nfb,
 			}
 
 			cnode->prev_level = level;
+			mutex_unlock(&cnode->level_mutex);
 		} else {
 			pr_debug("%s:same level (%d) is requested",
 				__func__, level);
 		}
 	}
-
+out:
 	return NOTIFY_OK;
 }
 
@@ -612,8 +659,10 @@ static int argos_parse_dt(struct device *dev)
 		INIT_LIST_HEAD(&cnode->irq_affinity_list);
 		cnode->task_hotplug_disable = false;
 		cnode->irq_hotplug_disable = false;
+		cnode->hmpboost_enable = false;
 		cnode->argos_block = false;
 		cnode->prev_level = -1;
+		mutex_init(&cnode->level_mutex);
 		cnode->qos = devm_kzalloc(dev, sizeof(struct argos_pm_qos), GFP_KERNEL);
 		if (!cnode->qos) {
 			dev_err(dev, "Failed to allocate memory of qos\n");

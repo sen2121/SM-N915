@@ -61,6 +61,8 @@ struct max77843_muic_data {
 	bool				is_muic_ready;
 	bool				is_muic_reset;
 
+	bool				ignore_adcerr;
+
 	/* check is otg test for jig uart off + vb */
 	bool				is_otg_test;
 

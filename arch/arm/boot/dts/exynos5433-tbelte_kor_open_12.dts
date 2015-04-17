@@ -809,7 +809,6 @@
 			stm,irq_type = <8200>;
 			stm,max_coords = <1599 2559>;	/* x y */
 			stm,num_lines = <25 16>;		/* rx tx */
-			stm,edge_x_pos = <1440>;
 			stm,regulator_dvdd = "tsp_io";
 			stm,regulator_avdd = "tsp_avdd";
 			stm,project_name = "TB", "N915";

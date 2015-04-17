@@ -85,6 +85,8 @@ struct mipi_dsim_config g_dsim_config = {
 	.dsim_ddi_pd = &s6e3hf2_mipi_lcd_driver,
 #elif defined(CONFIG_DECON_LCD_S6TNMR7)
 	.dsim_ddi_pd = &s6tnmr7_mipi_lcd_driver,
+#elif defined(CONFIG_DECON_LCD_S6E3HA1)
+	.dsim_ddi_pd = &s6e3ha1_mipi_lcd_driver,
 #endif
 };
 
@@ -275,14 +277,13 @@ static int parse_interrupt_dt_exynos5430(struct platform_device *pdev,
 	int ret = 0;
 	struct resource *res;
 
-#ifndef CONFIG_FB_I80_COMMAND_MODE
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 1);
 	if (res == NULL) {
 		pr_err("getting video irq resource failed\n");
 		return -ENOENT;
 	}
 	ddp->decon_driver.irq_no = res->start;
-#endif
+
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (res == NULL) {
 		pr_err("getting fifo irq resource failed\n");

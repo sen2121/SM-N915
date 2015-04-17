@@ -206,6 +206,7 @@
 		PIN_IN(gpc3-5, NONE, LV1);	/* HW_REV(1) */
 		PIN_IN(gpc3-6, NONE, LV1);	/* HW_REV(2) */
 		PIN_IN(gpc3-7, NONE, LV1);	/* HW_REV(3) */
+		PIN_OUT_SET(gpd4-1, 0, LV1);    /* COVER_3.3V_EN  */
 	};
 	sleep8: sleep-state {
 		PIN_SLP(gpv7-0, INPUT, DOWN);	/* MHL_RST */
@@ -274,7 +275,7 @@
 		PIN_SLP(gpd2-7, INPUT, DOWN);	/* MHLC_I2C_SCL */
 
 		PIN_SLP(gpd4-0, PREV, UP);	/* BT_EN */
-		PIN_SLP(gpd4-1, OUT0, NONE);	/* HEALTH_3.3V_EN  */
+		PIN_SLP(gpd4-1, PREV, NONE);    /* COVER_3.3V_EN  */
 		PIN_SLP(gpd4-2, PREV, NONE);	/* FPGA_RSTN */
 		PIN_SLP(gpd4-3, INPUT, DOWN);	/* TDMB_PWR_EN */
 		PIN_SLP(gpd4-4, INPUT, DOWN);	/* NC */

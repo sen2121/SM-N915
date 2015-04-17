@@ -513,7 +513,7 @@ void mif_print_dump(const u8 *data, int len, int width);
 -------------------------------------------------------------------------*/
 #define UDP_HDR_SIZE	8
 
-void print_ipv4_packet(const u8 *ip_pkt, enum direction dir);
+void print_ipv4_packet(const u8 *ip_pkt, enum ipc_layer layer);
 bool is_dns_packet(const u8 *ip_pkt);
 bool is_syn_packet(const u8 *ip_pkt);
 

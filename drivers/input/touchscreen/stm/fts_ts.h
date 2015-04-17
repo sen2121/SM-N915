@@ -125,6 +125,7 @@
 
 #define FTS_CMD_MSKEY_AUTOTUNE		0x96
 
+#define FTS_CMD_KEY_SENSE_OFF		0x9A
 #define FTS_CMD_KEY_SENSE_ON		0x9B
 #define FTS_CMD_SET_FAST_GLOVE_MODE	0x9D
 
@@ -291,7 +292,7 @@ struct fts_ts_info {
 	short *pFrame;
 	unsigned char *cx_data;
 	struct delayed_work cover_cmd_work;
-	int delayed_cmd_param;
+	int delayed_cmd_param[2];
 #endif
 
 	bool hover_ready;
@@ -299,6 +300,7 @@ struct fts_ts_info {
 	bool mshover_enabled;
 	bool fast_mshover_enabled;
 	bool flip_enable;
+	bool run_autotune;
 	bool mainscr_disable;
 	unsigned int cover_type;
 	bool edge_grip_mode;
@@ -307,8 +309,9 @@ struct fts_ts_info {
 	bool lowpower_mode;
 	bool deepsleep_mode;
 	int fts_power_state;
+#ifdef FTS_SUPPORT_STRINGLIB
 	unsigned char fts_mode;
-
+#endif
 #ifdef FTS_SUPPORT_TA_MODE
 	bool TA_Pluged;
 #endif
@@ -350,8 +353,6 @@ struct fts_ts_info {
 	struct fts_noise_param noise_param;
 	int (*fts_get_noise_param_address) (struct fts_ts_info *info);
 #endif
-
-	struct delayed_work cam_work;
 	unsigned int delay_time;
 	unsigned int debug_string;
 	struct delayed_work reset_work;
@@ -384,8 +385,10 @@ struct fts_ts_info {
 	void (*fts_command)(struct fts_ts_info *info, unsigned char cmd);
 	void (*fts_enable_feature)(struct fts_ts_info *info, unsigned char cmd, int enable);
 	int (*fts_get_version_info)(struct fts_ts_info *info);
+#ifdef FTS_SUPPORT_STRINGLIB
 	int (*fts_read_from_string)(struct fts_ts_info *info, unsigned short *reg, unsigned char *data, int length);
 	int (*fts_write_to_string)(struct fts_ts_info *info, unsigned short *reg, unsigned char *data, int length);
+#endif
 };
 
 int fts_fw_update_on_probe(struct fts_ts_info *info);

@@ -457,6 +457,7 @@
 			pinctrl-0 = <&pm_g3d_en &pm_dvs_en &pmic_irq &pm_wrsti &gpa3_pull_up>;
 			gpios = <&gpa3 7 0>, <&gpf0 1 0x1>, <&gpr3 0 0x1>;
 			g3d_en = <1>; /* 1 : enable , 0 : disable */
+			check_jigon = <1>; /* check jigon */
 			smpl_warn_vth = <0x40>;
 			regulators {
 				buck1_reg: BUCK1 {
@@ -854,7 +855,6 @@
 			stm,irq_type = <8200>;
 			stm,max_coords = <1599 2559>;	/* x y */
 			stm,num_lines = <25 16>;		/* rx tx */
-			stm,edge_x_pos = <1440>;
 			stm,regulator_dvdd = "tsp_io";
 			stm,regulator_avdd = "tsp_avdd";
 			stm,project_name = "TB", "N915";

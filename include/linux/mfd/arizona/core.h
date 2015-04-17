@@ -120,6 +120,7 @@ struct arizona {
 	int num_core_supplies;
 	struct regulator_bulk_data core_supplies[ARIZONA_MAX_CORE_SUPPLIES];
 	struct regulator *dcvdd;
+	struct notifier_block dcvdd_notifier;
 
 	struct arizona_pdata pdata;
 
@@ -151,6 +152,8 @@ struct arizona {
 
 	uint16_t out_comp_coeff;
 	uint8_t out_comp_enabled;
+
+	bool bypass_cache;
 };
 
 #define ARIZONA_DVFS_SR1_RQ          0x00000001

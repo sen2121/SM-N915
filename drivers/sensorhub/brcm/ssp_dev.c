@@ -65,6 +65,8 @@ static void initialize_variable(struct ssp_data *data)
 		data->batchLatencyBuf[iSensorIndex] = 0;
 		data->batchOptBuf[iSensorIndex] = 0;
 		data->aiCheckStatus[iSensorIndex] = INITIALIZATION_STATE;
+		data->lastTimestamp[iSensorIndex] = 0;
+		data->reportedData[iSensorIndex] = false;
 	}
 
 	atomic_set(&data->aSensorEnable, 0);
@@ -324,6 +326,7 @@ static int ssp_probe(struct spi_device *spi)
 
 	mutex_init(&data->comm_mutex);
 	mutex_init(&data->pending_mutex);
+	mutex_init(&data->enable_mutex);
 
 	if (spi->dev.of_node == NULL) {
 		pr_err("[SSP] %s, function callback is null\n", __func__);

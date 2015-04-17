@@ -380,6 +380,142 @@ static struct lcd_seq_info SEQ_ALPM_OFF_SET[] = {
 	{(u8 *)SEQ_DISPLAY_ON, ARRAY_SIZE(SEQ_DISPLAY_ON), 0},
 };
 
+static const unsigned char SEQ_GLOBAL_PARAM_21[] = {
+	0xB0,
+	0x15
+};
+
+static const unsigned char VDDMRVDD_LUT[] = {
+	72,
+	72,
+	71,
+	70,
+	69,
+	68,
+	67,
+	66,
+	65,
+	64,
+	1,
+	2,
+	3,
+	4,
+	5,
+	6,
+	7,
+	8,
+	9,
+	10,
+	11,
+	12,
+	13,
+	14,
+	15,
+	16,
+	17,
+	18,
+	19,
+	20,
+	21,
+	22,
+	23,
+	24,
+	25,
+	26,
+	27,
+	28,
+	29,
+	30,
+	31,
+	32,
+	33,
+	34,
+	35,
+	36,
+	37,
+	38,
+	39,
+	40,
+	41,
+	42,
+	43,
+	44,
+	45,
+	46,
+	47,
+	48,
+	49,
+	50,
+	51,
+	52,
+	53,
+	54,
+	73,
+	74,
+	75,
+	76,
+	77,
+	78,
+	79,
+	80,
+	81,
+	82,
+	83,
+	84,
+	85,
+	86,
+	87,
+	88,
+	89,
+	90,
+	91,
+	92,
+	93,
+	94,
+	95,
+	96,
+	97,
+	98,
+	99,
+	100,
+	101,
+	102,
+	103,
+	104,
+	105,
+	106,
+	107,
+	108,
+	109,
+	110,
+	111,
+	112,
+	113,
+	114,
+	115,
+	116,
+	117,
+	118,
+	119,
+	120,
+	121,
+	122,
+	123,
+	124,
+	125,
+	126,
+	127,
+	127,
+	127,
+	127,
+	127,
+	127,
+	127,
+	127,
+	127,
+	127
+};
+
 #endif
 
 #ifdef CONFIG_LCD_HMT
@@ -522,5 +658,158 @@ static const unsigned char HMT_ELVSS_TABLE[ACL_STATUS_MAX][3] = {
 };
 
 #endif
+
+static const unsigned char SEQ_MCD_ON1[] = {
+	0xB0, 0x03
+};
+
+static const unsigned char SEQ_MCD_ON2[] = {
+	0xBB, 0x30
+};
+
+static const unsigned char SEQ_MCD_ON3[] = {
+	0xB0, 0x37
+};
+
+static const unsigned char SEQ_MCD_ON4[] = {
+	0xCB, 0x04
+};
+
+static const unsigned char SEQ_MCD_ON5[] = {
+	0xB0, 0x27
+};
+
+static const unsigned char SEQ_MCD_ON6[] = {
+	0xCB, 0x44
+};
+
+static const unsigned char SEQ_MCD_ON7[] = {
+	0xB0, 0x38
+};
+
+static const unsigned char SEQ_MCD_ON8[] = {
+	0xCB, 0x05
+};
+
+static const unsigned char SEQ_MCD_ON9[] = {
+	0xB0, 0x28
+};
+
+static const unsigned char SEQ_MCD_ON10[] = {
+	0xCB, 0x45
+};
+
+static const unsigned char SEQ_MCD_ON11[] = {
+	0xB0, 0x39
+};
+
+static const unsigned char SEQ_MCD_ON12[] = {
+	0xCB, 0x12
+};
+
+static const unsigned char SEQ_MCD_ON13[] = {
+	0xB0, 0x29
+};
+
+static const unsigned char SEQ_MCD_ON14[] = {
+	0xCB, 0xD2
+};
+
+static const unsigned char SEQ_MCD_ON15[] = {
+	0xB0, 0x11
+};
+
+static const unsigned char SEQ_MCD_ON16[] = {
+	0xCB, 0x00
+};
+
+static const unsigned char SEQ_MCD_ON17[] = {
+	0xB0, 0x12
+};
+
+static const unsigned char SEQ_MCD_ON18[] = {
+	0xCB, 0x19
+};
+
+static const unsigned char SEQ_MCD_ON19[] = {
+	0xB0, 0x13
+};
+
+static const unsigned char SEQ_MCD_ON20[] = {
+	0xCB, 0xBF
+};
+
+static const unsigned char SEQ_MCD_ON21[] = {
+	0xB0, 0x21
+};
+
+static const unsigned char SEQ_MCD_ON22[] = {
+	0xCB, 0x3D
+};
+
+static const unsigned char SEQ_MCD_ON23[] = {
+	0xB0, 0x22
+};
+
+static const unsigned char SEQ_MCD_ON24[] = {
+	0xCB, 0xA2
+};
+
+static const unsigned char SEQ_MCD_ON25[] = {
+	0xB0, 0x04
+};
+
+static const unsigned char SEQ_MCD_ON26[] = {
+	0xCB, 0x80
+};
+
+static const unsigned char SEQ_MCD_ON27[] = {
+	0xB0, 0x14
+};
+
+static const unsigned char SEQ_MCD_ON28[] = {
+	0xCB, 0x19
+};
+
+static const unsigned char SEQ_MCD_ON29[] = {
+	0xB0, 0x05
+};
+
+static const unsigned char SEQ_MCD_ON30[] = {
+	0xF6, 0x3A
+};
+
+static struct lcd_seq_info SEQ_MCD_ON_SET[] = {
+	{(u8 *)SEQ_MCD_ON1, ARRAY_SIZE(SEQ_MCD_ON1), 0},
+	{(u8 *)SEQ_MCD_ON2, ARRAY_SIZE(SEQ_MCD_ON2), 0},
+	{(u8 *)SEQ_MCD_ON3, ARRAY_SIZE(SEQ_MCD_ON3), 0},
+	{(u8 *)SEQ_MCD_ON4, ARRAY_SIZE(SEQ_MCD_ON4), 0},
+	{(u8 *)SEQ_MCD_ON5, ARRAY_SIZE(SEQ_MCD_ON5), 0},
+	{(u8 *)SEQ_MCD_ON6, ARRAY_SIZE(SEQ_MCD_ON6), 0},
+	{(u8 *)SEQ_MCD_ON7, ARRAY_SIZE(SEQ_MCD_ON7), 0},
+	{(u8 *)SEQ_MCD_ON8, ARRAY_SIZE(SEQ_MCD_ON8), 0},
+	{(u8 *)SEQ_MCD_ON9, ARRAY_SIZE(SEQ_MCD_ON9), 0},
+	{(u8 *)SEQ_MCD_ON10, ARRAY_SIZE(SEQ_MCD_ON10), 0},
+	{(u8 *)SEQ_MCD_ON11, ARRAY_SIZE(SEQ_MCD_ON11), 0},
+	{(u8 *)SEQ_MCD_ON12, ARRAY_SIZE(SEQ_MCD_ON12), 0},
+	{(u8 *)SEQ_MCD_ON13, ARRAY_SIZE(SEQ_MCD_ON13), 0},
+	{(u8 *)SEQ_MCD_ON14, ARRAY_SIZE(SEQ_MCD_ON14), 0},
+	{(u8 *)SEQ_MCD_ON15, ARRAY_SIZE(SEQ_MCD_ON15), 0},
+	{(u8 *)SEQ_MCD_ON16, ARRAY_SIZE(SEQ_MCD_ON16), 0},
+	{(u8 *)SEQ_MCD_ON17, ARRAY_SIZE(SEQ_MCD_ON17), 0},
+	{(u8 *)SEQ_MCD_ON18, ARRAY_SIZE(SEQ_MCD_ON18), 0},
+	{(u8 *)SEQ_MCD_ON19, ARRAY_SIZE(SEQ_MCD_ON19), 0},
+	{(u8 *)SEQ_MCD_ON20, ARRAY_SIZE(SEQ_MCD_ON20), 0},
+	{(u8 *)SEQ_MCD_ON21, ARRAY_SIZE(SEQ_MCD_ON21), 0},
+	{(u8 *)SEQ_MCD_ON22, ARRAY_SIZE(SEQ_MCD_ON22), 0},
+	{(u8 *)SEQ_MCD_ON23, ARRAY_SIZE(SEQ_MCD_ON23), 0},
+	{(u8 *)SEQ_MCD_ON24, ARRAY_SIZE(SEQ_MCD_ON24), 0},
+	{(u8 *)SEQ_MCD_ON25, ARRAY_SIZE(SEQ_MCD_ON25), 0},
+	{(u8 *)SEQ_MCD_ON26, ARRAY_SIZE(SEQ_MCD_ON26), 0},
+	{(u8 *)SEQ_MCD_ON27, ARRAY_SIZE(SEQ_MCD_ON27), 0},
+	{(u8 *)SEQ_MCD_ON28, ARRAY_SIZE(SEQ_MCD_ON28), 0},
+	{(u8 *)SEQ_MCD_ON29, ARRAY_SIZE(SEQ_MCD_ON29), 0},
+	{(u8 *)SEQ_MCD_ON30, ARRAY_SIZE(SEQ_MCD_ON30), 0},
+};
 
 #endif /* __S6E3HF2_PARAM_H__ */

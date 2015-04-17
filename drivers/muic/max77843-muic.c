@@ -55,33 +55,6 @@
 extern struct muic_platform_data muic_pdata;
 static bool debug_en_vps = false;
 
-/* don't access this variable directly!! except get_switch_sel_value function.
- * you must get switch_sel value by using get_switch_sel function. */
-static int switch_sel;
-
-/* func : set_switch_sel
- * switch_sel value get from bootloader comand line
- * switch_sel data consist 8 bits (xxxxyyyyzzzz)
- * first 4bits(zzzz) mean path infomation.
- * next 4bits(yyyy) mean if pmic version info
- * next 4bits(xxxx) mean afc disable info
- */
-static int set_switch_sel(char *str)
-{
-	get_option(&str, &switch_sel);
-	switch_sel = switch_sel & 0xfff;
-	pr_info("%s:%s switch_sel: 0x%03x\n", MUIC_DEV_NAME, __func__,
-			switch_sel);
-
-	return switch_sel;
-}
-__setup("pmic_info=", set_switch_sel);
-
-static int get_switch_sel(void)
-{
-	return switch_sel;
-}
-
 struct max77843_muic_vps_data {
 	u8				adc1k;
 	u8				adcerr;
@@ -1085,6 +1058,43 @@ static ssize_t max77843_muic_set_apo_factory(struct device *dev,
 	return count;
 }
 
+#if defined(CONFIG_MUIC_MAX77843_IGNORE_ADCERR_WA) && defined(CONFIG_SEC_FACTORY)
+static ssize_t max77843_muic_show_ignore_adcerr(struct device *dev,
+				   struct device_attribute *attr,
+				   char *buf)
+{
+	struct max77843_muic_data *muic_data = dev_get_drvdata(dev);
+
+	pr_info("%s:%s ignore_adcerr[%c]", MUIC_DEV_NAME, __func__,
+				(muic_data->ignore_adcerr ? 'T' : 'F'));
+
+	if (muic_data->ignore_adcerr)
+		return sprintf(buf, "1\n");
+
+	return sprintf(buf, "0\n");
+}
+
+static ssize_t max77843_muic_set_ignore_adcerr(struct device *dev,
+					  struct device_attribute *attr,
+					  const char *buf, size_t count)
+{
+	struct max77843_muic_data *muic_data = dev_get_drvdata(dev);
+
+	if (!strncasecmp(buf, "1", 1)) {
+		muic_data->ignore_adcerr = true;
+	} else if (!strncasecmp(buf, "0", 0)) {
+		muic_data->ignore_adcerr = false;
+	} else {
+		pr_warn("%s:%s invalid value\n", MUIC_DEV_NAME, __func__);
+	}
+
+	pr_info("%s:%s ignore adc_err(%d)\n", MUIC_DEV_NAME, __func__,
+			muic_data->ignore_adcerr);
+
+	return count;
+}
+#endif /* CONFIG_MUIC_MAX77843_IGNORE_ADCERR_WA && CONFIG_SEC_FACTORY */
+
 static void max77843_muic_set_adcdbset
 			(struct max77843_muic_data *muic_data, int value)
 {
@@ -1164,6 +1174,10 @@ static DEVICE_ATTR(otg_test, 0664,
 		max77843_muic_show_otg_test, max77843_muic_set_otg_test);
 static DEVICE_ATTR(apo_factory, 0664,
 		max77843_muic_show_apo_factory, max77843_muic_set_apo_factory);
+#if defined(CONFIG_MUIC_MAX77843_IGNORE_ADCERR_WA) && defined(CONFIG_SEC_FACTORY)
+static DEVICE_ATTR(ignore_adcerr, 0664,
+		max77843_muic_show_ignore_adcerr, max77843_muic_set_ignore_adcerr);
+#endif /* CONFIG_MUIC_MAX77843_IGNORE_ADCERR_WA && CONFIG_SEC_FACTORY */
 #if defined(CONFIG_HV_MUIC_MAX77843_AFC)
 static DEVICE_ATTR(afc_disable, 0664,
 		max77843_muic_show_afc_disable, max77843_muic_set_afc_disable);
@@ -1181,6 +1195,9 @@ static struct attribute *max77843_muic_attributes[] = {
 #endif /* CONFIG_MUIC_MAX77843_SUPPROT_AUDIO_LINE_OUT_CONTROL */
 	&dev_attr_otg_test.attr,
 	&dev_attr_apo_factory.attr,
+#if defined(CONFIG_MUIC_MAX77843_IGNORE_ADCERR_WA) && defined(CONFIG_SEC_FACTORY)
+	&dev_attr_ignore_adcerr.attr,
+#endif /* CONFIG_MUIC_MAX77843_IGNORE_ADCERR_WA && CONFIG_SEC_FACTORY */
 #if defined(CONFIG_HV_MUIC_MAX77843_AFC)
 	&dev_attr_afc_disable.attr,
 #endif /* CONFIG_HV_MUIC_MAX77843_AFC */
@@ -1430,7 +1447,7 @@ static int max77843_muic_handle_detach(struct max77843_muic_data *muic_data)
 	if (muic_data->attached_dev == ATTACHED_DEV_NONE_MUIC) {
 		pr_info("%s:%s Duplicated(%d), just ignore\n", MUIC_DEV_NAME,
 				__func__, muic_data->attached_dev);
-		return ret;
+		goto out_without_noti;
 	}
 
 	/* Enable Factory Accessory Detection State Machine */
@@ -2008,7 +2025,9 @@ static void max77843_muic_detect_dev(struct max77843_muic_data *muic_data, int i
 	u8 status[3];
 	u8 hvcontrol[2];
 	u8 adc1k, adcerr, adc, vbvolt, chgdetrun, chgtyp;
+#if defined(CONFIG_HV_MUIC_MAX77843_AFC)
 	u8 vdnmon, dpdnvden, mpnack, vbadc;
+#endif /* CONFIG_HV_MUIC_MAX77843_AFC */
 	int ret;
 	int i;
 
@@ -2043,6 +2062,7 @@ static void max77843_muic_detect_dev(struct max77843_muic_data *muic_data, int i
 	chgdetrun = status[1] & STATUS2_CHGDETRUN_MASK;
 	chgtyp = status[1] & STATUS2_CHGTYP_MASK;
 
+#if defined(CONFIG_HV_MUIC_MAX77843_AFC)
 	mpnack = status[2] & STATUS3_MPNACK_MASK;
 	vdnmon = status[2] & STATUS3_VDNMON_MASK;
 	vbadc = status[2] & STATUS3_VBADC_MASK;
@@ -2052,19 +2072,24 @@ static void max77843_muic_detect_dev(struct max77843_muic_data *muic_data, int i
 		muic_data->is_mrxrdy = true;
 	else
 		muic_data->is_mrxrdy = false;
+#endif /* CONFIG_HV_MUIC_MAX77843_AFC */
 
-	pr_info("%s:%s adc1k:0x%x adcerr:0x%x adc:0x%x vb:0x%x chgdetrun:0x%x"
-		" chgtyp:0x%x\n", MUIC_DEV_NAME, __func__, adc1k, adcerr, adc,
-		vbvolt, chgdetrun, chgtyp);
+	pr_info("%s:%s adc1k:0x%x adcerr:0x%x[%c] adc:0x%x vb:0x%x chgdetrun:0x%x"
+		" chgtyp:0x%x\n", MUIC_DEV_NAME, __func__, adc1k,
+		adcerr, (muic_data->ignore_adcerr ? 'T' : 'F'),
+		adc, vbvolt, chgdetrun, chgtyp);
 
+#if defined(CONFIG_HV_MUIC_MAX77843_AFC)
 	pr_info("%s:%s vdnmon:0x%x mpnack:0x%x vbadc:0x%x dpdnvden:0x%x\n",
 		MUIC_DEV_NAME, __func__, vdnmon, mpnack, vbadc, dpdnvden);
+#endif /* CONFIG_HV_MUIC_MAX77843_AFC */
 
 	/* Workaround for Factory mode.
 	 * Abandon adc interrupt of approximately +-100K range
 	 * if previous cable status was JIG UART BOOT OFF.
 	 */
-	if (muic_data->attached_dev == ATTACHED_DEV_JIG_UART_OFF_MUIC) {
+	if ((muic_data->attached_dev == ATTACHED_DEV_JIG_UART_OFF_MUIC) ||
+		(muic_data->attached_dev == ATTACHED_DEV_JIG_UART_OFF_VB_FG_MUIC)) {
 		if ((adc == (ADC_JIG_UART_OFF + 1)) ||
 				(adc == (ADC_JIG_UART_OFF - 1))) {
 			if (!muic_data->is_factory_start || adc != ADC_JIG_UART_ON) {
@@ -2077,8 +2102,10 @@ static void max77843_muic_detect_dev(struct max77843_muic_data *muic_data, int i
 	for (i = 0; i < ARRAY_SIZE(muic_vps_table); i++) {
 		tmp_vps = &(muic_vps_table[i]);
 
-		if (!(muic_check_vps_adcerr(muic_data, tmp_vps, adcerr)))
-			continue;
+		if (!(muic_data->ignore_adcerr)) {
+			if (!(muic_check_vps_adcerr(muic_data, tmp_vps, adcerr)))
+				continue;
+		}
 
 		if (tmp_vps->adc1k != adc1k)
 			continue;
@@ -2549,8 +2576,16 @@ static int max77843_muic_probe(struct platform_device *pdev)
 	muic_data->is_muic_ready = false;
 	muic_data->is_otg_test = false;
 	muic_data->is_factory_start = false;
+#if defined(CONFIG_MUIC_MAX77843_IGNORE_ADCERR_WA) && defined(CONFIG_SEC_FACTORY)
+	muic_data->ignore_adcerr = true;
+#else
+	muic_data->ignore_adcerr = false;
+#endif /* CONFIG_MUIC_MAX77843_IGNORE_ADCERR_WA */
+
+#if defined(CONFIG_HV_MUIC_MAX77843_AFC)
 	max77843_muic_set_afc_ready(muic_data, false);
 	muic_data->afc_count = 0;
+#endif /* CONFIG_HV_MUIC_MAX77843_AFC */
 #if defined(CONFIG_MUIC_MAX77843_RESET_WA)
 	set_muic_reset(muic_data, false);
 #endif

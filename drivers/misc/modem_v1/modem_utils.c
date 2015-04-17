@@ -39,6 +39,7 @@
 #include <linux/gpio.h>
 #include <linux/delay.h>
 #include <linux/wakelock.h>
+#include <trace/events/modem_if.h>
 
 #include "modem_prj.h"
 #include "modem_utils.h"
@@ -60,7 +61,8 @@ enum bit_debug_flags {
 	DEBUG_FLAG_CSVT,
 	DEBUG_FLAG_BOOT,
 	DEBUG_FLAG_DUMP,
-	DEBUG_FLAG_LOG
+	DEBUG_FLAG_LOG,
+	DEBUG_FLAG_UNKNOWN
 };
 
 static unsigned long dflags = (1 << DEBUG_FLAG_FMT);
@@ -264,14 +266,14 @@ static inline void dump2hex(char *buff, size_t buff_size,
 
 static inline bool log_enabled(u8 ch, enum ipc_layer layer)
 {
+#ifdef CONFIG_SEC_MODEM_DEBUGFS
 	if (unlikely(layer == IOD_RX || layer == IOD_TX))
 		if (unlikely(!test_bit(DEBUG_FLAG_IOD, &dflags)))
 			return false;
+#endif
 
 	if (sipc5_fmt_ch(ch))
 		return test_bit(DEBUG_FLAG_FMT, &dflags);
-	else if (sipc_ps_ch(ch))
-		return test_bit(DEBUG_FLAG_PS, &dflags);
 	else if (sipc5_rfs_ch(ch))
 		return test_bit(DEBUG_FLAG_RFS, &dflags);
 	else if (sipc_csd_ch(ch))
@@ -282,8 +284,21 @@ static inline bool log_enabled(u8 ch, enum ipc_layer layer)
 		return test_bit(DEBUG_FLAG_BOOT, &dflags);
 	else if (sipc5_dump_ch(ch))
 		return test_bit(DEBUG_FLAG_DUMP, &dflags);
+	else if (test_bit(DEBUG_FLAG_UNKNOWN, &dflags))
+		return true;
 	else
 		return false;
+}
+
+static inline u32 dump_skb(char *str, u32 size, struct sk_buff *skb)
+{
+	u32 len, buflen;
+
+	len = min_t(unsigned int, skb->len, size);
+	buflen = len ? len * 3 : 1;
+	dump2hex(str, buflen, (char *)(skb->data), len);
+
+	return buflen;
 }
 
 /**
@@ -295,17 +310,29 @@ static inline bool log_enabled(u8 ch, enum ipc_layer layer)
 */
 inline void log_ipc_pkt(enum ipc_layer layer, u8 ch, struct sk_buff *skb)
 {
-	/*struct io_device *iod;*/
+	u32 buflen;
+	char str[SZ_256];
 
-	if (unlikely(!skb)) {
-		mif_err("ERR! NO skb!!!\n");
+	if (unlikely(!skb))
+		return;
+
+	if (sipc_ps_ch(ch)) {
+#ifdef CONFIG_SEC_MODEM_DEBUGFS
+		buflen = dump_skb(str, SZ_64, skb);
+		trace_mif_log(layer_str(layer), buflen, str);
+#endif
 		return;
 	}
 
-	/*iod = skbpriv(skb)->iod;*/
+	if (!log_enabled(ch, layer))
+		return;
 
-	if (log_enabled(ch, layer))
-		pr_skb(layer_str(layer), skb);
+	buflen = dump_skb(str, SZ_16, skb);
+#ifdef CONFIG_SEC_MODEM_DEBUGFS
+	trace_mif_log(layer_str(layer), buflen, str);
+#endif
+
+	pr_info("%s: %s(%d): %s\n", MIF_TAG, layer_str(layer), buflen, str);	
 }
 
 /* print buffer as hex string */
@@ -537,20 +564,33 @@ exit:
 __be32 ipv4str_to_be32(const char *ipv4str, size_t count)
 {
 	unsigned char ip[4];
-	char ipstr[16]; /* == strlen("xxx.xxx.xxx.xxx") + 1 */
-	char *next = ipstr;
+	char *ipstr; /* == strlen("xxx.xxx.xxx.xxx") + 1 */
+	char *next;
 	int i;
+	int size;
 
-	strncpy(ipstr, ipv4str, ARRAY_SIZE(ipstr));
+	if (!ipv4str)
+		return 0;
+
+	if ((size = strlen(ipv4str)) > 16)
+		return 0;
+
+	ipstr = kzalloc(size, GFP_ATOMIC);
+	next = ipstr;
+
+	strncpy(ipstr, ipv4str, size);
 
 	for (i = 0; i < 4; i++) {
 		char *p;
 
 		p = strsep(&next, ".");
-		if (kstrtou8(p, 10, &ip[i]) < 0)
+		if (kstrtou8(p, 10, &ip[i]) < 0) {
+			kfree(ipstr);
 			return 0; /* == 0.0.0.0 */
+		}
 	}
 
+	kfree(ipstr);
 	return *((__be32 *)ip);
 }
 
@@ -852,7 +892,7 @@ static void strcat_udp_header(char *buff, u8 *pkt)
 	}
 }
 
-void print_ipv4_packet(const u8 *ip_pkt, enum direction dir)
+void print_ipv4_packet(const u8 *ip_pkt, enum ipc_layer layer)
 {
 	char *buff;
 	struct iphdr *iph = (struct iphdr *)ip_pkt;
@@ -898,7 +938,7 @@ void print_ipv4_packet(const u8 *ip_pkt, enum direction dir)
 	if (!buff)
 		return;
 
-	if (dir == TX)
+	if (layer == PS_TX)
 		snprintf(line, LINE_BUFF_SIZE, "%s\n", TX_SEPARATOR);
 	else
 		snprintf(line, LINE_BUFF_SIZE, "%s\n", RX_SEPARATOR);

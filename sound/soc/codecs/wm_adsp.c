@@ -198,8 +198,6 @@ static void wm_adsp_buf_free(struct list_head *list)
 /* Must remain a power of two */
 #define WM_ADSP_CAPTURE_BUFFER_SIZE      1048576
 
-#define WM_ADSP_NUM_FW 17
-
 #define WM_ADSP_FW_MBC_VSS        0
 #define WM_ADSP_FW_TX             1
 #define WM_ADSP_FW_TX_SPK         2
@@ -217,6 +215,11 @@ static void wm_adsp_buf_free(struct list_head *list)
 #define WM_ADSP_FW_EZ2GROUPTALK_TX 14
 #define WM_ADSP_FW_EZ2GROUPTALK_RX 15
 #define WM_ADSP_FW_EZ2RECORD       16
+#define WM_ADSP_FW_ASR_ASSIST     17
+#define WM_ADSP_FW_MASTERHIFI     18
+#define WM_ADSP_FW_SPEAKERPROTECT 19
+
+#define WM_ADSP_NUM_FW            20
 
 static const char *wm_adsp_fw_text[WM_ADSP_NUM_FW] = {
 	[WM_ADSP_FW_MBC_VSS] =    "MBC/VSS",
@@ -236,6 +239,9 @@ static const char *wm_adsp_fw_text[WM_ADSP_NUM_FW] = {
 	[WM_ADSP_FW_EZ2GROUPTALK_TX] = "Ez2GroupTalk Tx",
 	[WM_ADSP_FW_EZ2GROUPTALK_RX] = "Ez2GroupTalk Rx",
 	[WM_ADSP_FW_EZ2RECORD] = "Ez2Record",
+	[WM_ADSP_FW_ASR_ASSIST] = "ASR Assist",
+	[WM_ADSP_FW_MASTERHIFI] = "MasterHiFi",
+	[WM_ADSP_FW_SPEAKERPROTECT] = "Speaker Protect",
 };
 
 struct wm_adsp_system_config_xm_hdr {
@@ -397,6 +403,9 @@ static struct wm_adsp_fw_defs wm_adsp_fw[WM_ADSP_NUM_FW] = {
 	[WM_ADSP_FW_EZ2GROUPTALK_TX] = { .file = "ez2grouptalk-tx" },
 	[WM_ADSP_FW_EZ2GROUPTALK_RX] = { .file = "ez2grouptalk-rx" },
 	[WM_ADSP_FW_EZ2RECORD] = { .file = "ez2record" },
+	[WM_ADSP_FW_ASR_ASSIST] =     { .file = "asr-assist" },
+	[WM_ADSP_FW_MASTERHIFI] =     { .file = "masterhifi" },
+	[WM_ADSP_FW_SPEAKERPROTECT] = { .file = "speaker-protect" },
 };
 
 struct wm_coeff_ctl_ops {
@@ -1971,127 +1980,6 @@ err:
 }
 EXPORT_SYMBOL_GPL(wm_adsp1_event);
 
-void wm_adsp2_dbg_regs(struct wm_adsp *dsp)
-{
-	int ret, val, i, reg;
-	adsp_info(dsp, "================================================\n");
-
-	ret = regmap_read(dsp->regmap, 0x101, &val);
-	if (ret != 0) {
-		adsp_info(dsp, "Failed to read reg! %s:%d\n",
-			 __func__,
-			 __LINE__);
-		return;
-	}
-
-	adsp_info(dsp, "SYSCLK [0x0101]: 0x%04x\n", val);
-
-	for (i = 0; i < 9; i++) {
-		reg = 0x171 + i;
-		ret = regmap_read(dsp->regmap, reg, &val);
-		if (ret != 0) {
-			adsp_info(dsp, "Failed to read reg! %s:%d\n",
-				 __func__,
-				 __LINE__);
-			return;
-		}
-
-		adsp_info(dsp, "FLL settings [0x%04x]: 0x%04x\n", reg, val);
-	}
-
-	for (i = 0; i < 7; i++) {
-		reg = 0x1100 + i;
-		ret = regmap_read(dsp->regmap, reg, &val);
-		if (ret != 0) {
-			adsp_info(dsp, "Failed to read reg! %s:%d\n",
-				 __func__,
-				 __LINE__);
-			return;
-		}
-
-		adsp_info(dsp, "DSP1 Status %d [0x%04x]: 0x%04x\n", i,
-			 reg, val);
-	}
-
-	for (i = 0; i < 7; i++) {
-		reg = 0x1200 + i;
-		ret = regmap_read(dsp->regmap, reg, &val);
-		if (ret != 0) {
-			adsp_info(dsp, "Failed to read reg! %s:%d\n",
-				 __func__,
-				 __LINE__);
-			return;
-		}
-
-		adsp_info(dsp, "DSP2 Status %d [0x%04x]: 0x%04x\n", i,
-			 reg, val);
-	}
-
-	for (i = 0; i < 7; i++) {
-		reg = 0x1300 + i;
-		ret = regmap_read(dsp->regmap, reg, &val);
-		if (ret != 0) {
-			adsp_info(dsp, "Failed to read reg! %s:%d\n",
-				 __func__,
-				 __LINE__);
-			return;
-		}
-
-		adsp_info(dsp, "DSP3 Status %d [0x%04x]: 0x%04x\n", i,
-			 reg, val);
-	}
-
-	for (i = 0; i < 7; i++) {
-		reg = 0x1400 + i;
-		ret = regmap_read(dsp->regmap, reg, &val);
-		if (ret != 0) {
-			adsp_info(dsp, "Failed to read reg! %s:%d\n",
-				 __func__,
-				 __LINE__);
-			return;
-		}
-
-		adsp_info(dsp, "DSP4 Status %d [0x%04x]: 0x%04x\n", i,
-			 reg, val);
-	}
-
-	ret = regmap_read(dsp->regmap, 0x220, &val);
-	if (ret != 0) {
-		adsp_info(dsp, "Failed to read reg! %s:%d\n",
-			 __func__,
-			 __LINE__);
-		return;
-	}
-
-	adsp_info(dsp, "POWER MGMT [0x0220]: 0x%04x\n", val);
-
-	for (i = 0; i < 9; i++) {
-		reg = 0xd20 + i;
-		ret = regmap_read(dsp->regmap, reg, &val);
-		if (ret != 0) {
-			adsp_info(dsp, "Failed to read reg! %s:%d\n",
-				 __func__,
-				 __LINE__);
-			return;
-		}
-
-		adsp_info(dsp, "Interrupt Raw Status %d [0x%04x]: 0x%04x\n",
-			 i, reg, val);
-	}
-
-	ret = regmap_read(dsp->regmap, 0xd55, &val);
-	if (ret != 0) {
-		adsp_info(dsp, "Failed to read reg! %s:%d\n",
-			 __func__,
-			 __LINE__);
-		return;
-	}
-
-	adsp_info(dsp, "AOD IRQ Raw Status [0x0d55]: 0x%04x\n", val);
-
-	adsp_info(dsp, "=================================================\n");
-}
-
 static int wm_adsp2_ena(struct wm_adsp *dsp)
 {
 	unsigned int val;
@@ -2117,7 +2005,6 @@ static int wm_adsp2_ena(struct wm_adsp *dsp)
 
 	if (!(val & ADSP2_RAM_RDY)) {
 		adsp_err(dsp, "Failed to start DSP RAM\n");
-		wm_adsp2_dbg_regs(dsp);
 		return -EBUSY;
 	}
 
@@ -2278,7 +2165,8 @@ int wm_adsp2_event(struct snd_soc_dapm_widget *w,
 		break;
 
 	case SND_SOC_DAPM_PRE_PMD:
-		if (dsp->fw_id == 0x40019) {
+		if (dsp->fw_id == 0x40019 || dsp->fw_id == 0x5001f ||
+		    dsp->fw_id == 0x4001f) {
 			wm_adsp_edac_shutdown(dsp);
 		}
 
@@ -3025,7 +2913,7 @@ int wm_adsp_stream_read(struct wm_adsp *adsp, char __user *buf, size_t count)
 	if (avail < count)
 		count = avail;
 
-	adsp_dbg(adsp, "%s: avail=%d toend=%d count=%d\n",
+	adsp_dbg(adsp, "%s: avail=%d toend=%d count=%zo\n",
 		 __func__, avail, to_end, count);
 
 	if (count > to_end) {
@@ -3067,3 +2955,5 @@ int wm_adsp_stream_avail(const struct wm_adsp *adsp)
 			adsp->capt_buf_size);
 }
 EXPORT_SYMBOL_GPL(wm_adsp_stream_avail);
+
+MODULE_LICENSE("GPL v2");
