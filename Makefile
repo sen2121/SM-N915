@@ -194,7 +194,7 @@ SUBARCH := $(shell uname -m | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
 # Default value for CROSS_COMPILE is not to prefix executables
 # Note: Some architectures assign CROSS_COMPILE in their arch/*/Makefile
 ARCH		?= $(SUBARCH)
-CROSS_COMPILE	?= $(CCACHE) /home/upintheair/arm-eabi-4.9/bin/arm-eabi-
+CROSS_COMPILE	?= $(CCACHE) /home/upintheair/arm-eabi-4.7/bin/arm-eabi-
 
 # Architecture as present in compile.h
 UTS_MACHINE 	:= $(ARCH)
@@ -352,13 +352,13 @@ CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 KERNEL_FLAGS	= -munaligned-access -mfpu=neon-vfpv4 \
 		  -fgcse-after-reload -fgcse-sm \
 		  -fgcse-las -ftree-loop-im -ftree-loop-ivcanon -fweb \
-		  -frename-registers -ftree-loop-linear -ftree-vectorize \
+		  -frename-registers -ftree-vectorize \
 		  -fmodulo-sched -ffast-math \
 		  -funsafe-math-optimizations
 CFLAGS_MODULE   = -DMODULE $(KERNEL_FLAGS)
 AFLAGS_MODULE   = -DMODULE $(KERNEL_FLAGS)
 LDFLAGS_MODULE  =
-CFLAGS_KERNEL	= $(KERNEL_FLAGS)
+CFLAGS_KERNEL	=
 AFLAGS_KERNEL	=
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
@@ -387,8 +387,7 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
 		   -fno-delete-null-pointer-checks \
-		   -fdiagnostics-show-option -Werror \
-		   $(KERNEL_FLAGS)
+		   -fdiagnostics-show-option -Werror
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
 KBUILD_AFLAGS   := -D__ASSEMBLY__
